@@ -146,7 +146,7 @@ st.markdown(
 )
 
 # -----------------------------------------------------------------------------
-# 2. CONEXIÓN A GOOGLE SHEETS
+# 2. CONEXIÓN ROBUSTA A GOOGLE SHEETS
 # -----------------------------------------------------------------------------
 scopes = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -154,13 +154,23 @@ scopes = [
 ]
 
 def conectar_sheet():
-    if "gcp_json" not in st.secrets:
-        return None, "Falta configurar 'gcp_json' en los Secretos de Streamlit Cloud."
+    creds_dict = None
+    
+    # Intento 1: Formato TOML [gcp_service_account]
+    if "gcp_service_account" in st.secrets:
+        creds_dict = dict(st.secrets["gcp_service_account"])
+    # Intento 2: Formato JSON plano string
+    elif "gcp_json" in st.secrets:
+        try:
+            json_raw = st.secrets["gcp_json"].strip("'\"")
+            creds_dict = json.loads(json_raw, strict=False)
+        except Exception as e:
+            return None, f"Error al parsear gcp_json: {e}"
+            
+    if not creds_dict:
+        return None, "Falta la configuración de credenciales en los Secrets de Streamlit."
+
     try:
-        json_raw = st.secrets["gcp_json"].strip("'\"")
-        creds_dict = json.loads(json_raw, strict=False)
-        
-        # Corrección automática de saltos de línea en la clave privada
         if "private_key" in creds_dict:
             creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
             
@@ -186,7 +196,7 @@ def obtener_datos(pestana_nombre):
         except Exception:
             pass
             
-    # Datos por defecto de los mandamientos si la conexión falla
+    # Mandamientos por defecto si falla la conexión
     if pestana_nombre == "Mandamientos":
         return pd.DataFrame([
             {"Numero": 1, "Titulo": "Comunicación sincera siempre", "Descripcion": "Hablar de nuestras emociones con amor y transparencia."},
@@ -210,8 +220,8 @@ def guardar_hito(nuevo_hito):
             ws.append_row([str(x) for x in nuevo_hito], value_input_option="USER_ENTERED")
             return True, None
         except Exception as e:
-            return False, f"Error al escribir en la pestaña Hitos: {e}"
-    return False, f"No se pudo conectar con el documento: {err}"
+            return False, f"Error escribiendo en Hitos: {e}"
+    return False, f"Sin conexión: {err}"
 
 # -----------------------------------------------------------------------------
 # 3. ENCABEZADO Y CONTADOR
@@ -268,7 +278,7 @@ menu = st.radio(
 
 st.markdown("---")
 
-# Comprobación de estado de conexión directo en la interfaz
+# Verificación de conexión en vivo
 sh_test, err_test = conectar_sheet()
 if not sh_test:
     st.warning(f"⚠️ **Atención:** La aplicación no está conectada a Google Sheets. Motivo: `{err_test}`")
