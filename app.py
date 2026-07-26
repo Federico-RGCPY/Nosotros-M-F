@@ -3,8 +3,8 @@ import pandas as pd
 from datetime import datetime, date
 import json
 import urllib.parse
+import gspread
 from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
 
 # -----------------------------------------------------------------------------
 # 1. CONFIGURACIÓN DE PÁGINA Y ESTILOS
@@ -15,8 +15,11 @@ st.set_page_config(
     layout="wide"
 )
 
-# 🗓️ FECHA DE INICIO DE LA RELACIÓN (21 de Abril de 2026)
+# 🗓️ FECHA DE INICIO DE LA RELACIÓN
 FECHA_INICIO = date(2026, 4, 21)  
+
+# 🔑 ID DE TU GOOGLE SHEET CONECTADO
+SPREADSHEET_ID = "1cvt3CXiA4yWn-_OVUxbc3_-QoI4gLBW3"
 
 # Estilos CSS Románticos y Modernos
 st.markdown(
@@ -143,80 +146,52 @@ st.markdown(
 )
 
 # -----------------------------------------------------------------------------
-# 2. CONEXIÓN A GOOGLE SHEETS API NATIVA
+# 2. CONEXIÓN A GOOGLE SHEETS
 # -----------------------------------------------------------------------------
-scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+scopes = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
 
 @st.cache_resource
-def obtener_servicio_sheets():
+def conectar_sheet():
     if "gcp_json" in st.secrets:
         json_raw = st.secrets["gcp_json"].strip("'\"")
         creds_dict = json.loads(json_raw, strict=False)
         credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-        return build('sheets', 'v4', credentials=credentials)
-    return None
-
-@st.cache_data(ttl=10)
-def obtener_spreadsheet_id():
-    service = obtener_servicio_sheets()
-    if service:
-        if "spreadsheet_id" in st.secrets:
-            return st.secrets["spreadsheet_id"]
-        # Buscar el ID del libro por su nombre usando Drive
-        try:
-            creds_dict = json.loads(st.secrets["gcp_json"].strip("'\""), strict=False)
-            drive_creds = Credentials.from_service_account_info(creds_dict, scopes=["https://www.googleapis.com/auth/drive.readonly"])
-            drive_service = build('drive', 'v3', credentials=drive_creds)
-            response = drive_service.files().list(q="name = 'Nosotros_Lo_Nuestro' and mimeType = 'application/vnd.google-apps.spreadsheet'", fields="files(id)").execute()
-            files = response.get('files', [])
-            if files:
-                return files[0]['id']
-        except Exception:
-            pass
+        gc = gspread.authorize(credentials)
+        return gc.open_by_key(SPREADSHEET_ID)
     return None
 
 def obtener_datos(pestana_nombre):
-    service = obtener_servicio_sheets()
-    spreadsheet_id = obtener_spreadsheet_id()
-    
-    if service and spreadsheet_id:
+    sh = conectar_sheet()
+    if sh:
         try:
-            range_name = f"'{pestana_nombre}'!A1:Z100"
-            result = service.spreadsheets().values().get(
-                spreadsheetId=spreadsheet_id, range=range_name
-            ).execute()
-            rows = result.get('values', [])
-            
-            if not rows or len(rows) <= 1:
+            ws = sh.worksheet(pestana_nombre)
+            vals = ws.get_all_values()
+            if not vals or len(vals) <= 1:
                 return pd.DataFrame()
             
-            headers = [str(h).strip() for h in rows[0]]
-            data_rows = rows[1:]
+            headers = [str(h).strip() for h in vals[0]]
+            data = vals[1:]
             
-            max_len = len(headers)
-            normalized_rows = [r + [""] * (max_len - len(r)) for r in data_rows]
+            max_cols = len(headers)
+            data_clean = [r + [""] * (max_cols - len(r)) for r in data]
             
-            df = pd.DataFrame(normalized_rows, columns=headers)
+            df = pd.DataFrame(data_clean, columns=headers)
+            df = df.dropna(how="all")
             return df
         except Exception as e:
-            st.error(f"Error leyendo {pestana_nombre}: {e}")
+            st.error(f"Error leyendo la pestaña '{pestana_nombre}': {e}")
             return pd.DataFrame()
     return pd.DataFrame()
 
 def guardar_hito(nuevo_hito):
-    service = obtener_servicio_sheets()
-    spreadsheet_id = obtener_spreadsheet_id()
-    
-    if service and spreadsheet_id:
+    sh = conectar_sheet()
+    if sh:
         try:
-            range_name = "'Hitos'!A1"
-            body = {'values': [[str(val) for val in nuevo_hito]]}
-            service.spreadsheets().values().append(
-                spreadsheetId=spreadsheet_id,
-                range=range_name,
-                valueInputOption="USER_ENTERED",
-                body=body
-            ).execute()
+            ws = sh.worksheet("Hitos")
+            ws.append_row([str(x) for x in nuevo_hito], value_input_option="USER_ENTERED")
             return True
         except Exception as e:
             st.error(f"Error guardando hito: {e}")
@@ -312,8 +287,7 @@ if menu == "📖 Nuestra Línea de Tiempo":
                         descripcion.strip()
                     ]
                     if guardar_hito(nuevo_registro):
-                        st.success("✨ ¡Recuerdo guardado para siempre!")
-                        st.cache_data.clear()
+                        st.success("✨ ¡Recuerdo guardado con éxito!")
                         st.rerun()
 
     st.subheader("⏳ Nuestra Historia")
