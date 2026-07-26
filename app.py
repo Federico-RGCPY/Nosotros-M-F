@@ -1,9 +1,10 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
 import pandas as pd
-import plotly.graph_objects as go
 from datetime import datetime, date
-import io
+import json
+import urllib.parse
+import gspread
+from google.oauth2.service_account import Credentials
 
 # 1. CONFIGURACIÓN DE LA PÁGINA
 st.set_page_config(page_title="RGC Dashboard VIP", layout="wide")
