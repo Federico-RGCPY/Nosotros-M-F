@@ -176,8 +176,8 @@ def conectar_sheet():
     except Exception as e:
         return None, str(e)
 
-def limpiar_string(texto):
-    """Normaliza texto removiendo acentos y convirtiendo a minúsculas para búsqueda de columnas flex."""
+def limpiar_key(texto):
+    """Limpia textos de los encabezados para búsquedas flexibles."""
     replacements = (("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u"))
     s = str(texto).lower().strip()
     for a, b in replacements:
@@ -190,29 +190,33 @@ def obtener_datos(pestana_nombre):
         try:
             ws = sh.worksheet(pestana_nombre)
             vals = ws.get_all_values()
-            if len(vals) > 1:
+            
+            if len(vals) >= 1:
                 headers_raw = [str(h).strip() for h in vals[0]]
                 data = vals[1:]
-                max_cols = len(headers_raw)
                 
                 rows_clean = []
                 for idx, r in enumerate(data):
-                    row_data = r + [""] * (max_cols - len(r))
-                    row_dict = {}
+                    # Ignorar filas totalmente vacías
+                    if not any(r):
+                        continue
                     
-                    for raw_h, val in zip(headers_raw, row_data):
-                        clean_key = limpiar_string(raw_h)
-                        row_dict[clean_key] = val
-                        # También conservamos el nombre original por respaldo
-                        row_dict[raw_h] = val
-                        
+                    row_dict = {}
+                    # Guardar por índice de columna de respaldo
+                    for c_idx, val in enumerate(r):
+                        row_dict[f"col_{c_idx}"] = val
+                        if c_idx < len(headers_raw):
+                            clean_k = limpiar_key(headers_raw[c_idx])
+                            row_dict[clean_k] = val
+                            row_dict[headers_raw[c_idx]] = val
+                    
                     row_dict["_fila_num"] = idx + 2
                     rows_clean.append(row_dict)
                     
                 df = pd.DataFrame(rows_clean)
                 return df
-        except Exception:
-            pass
+        except Exception as e:
+            st.error(f"Error al leer pestaña '{pestana_nombre}': {e}")
             
     # Mandamientos de respaldo por si falla la conexión
     if pestana_nombre == "Mandamientos":
@@ -223,7 +227,7 @@ def obtener_datos(pestana_nombre):
             {"numero": "4", "titulo": "Celebrar cada 21", "descripcion": "Hacer de nuestro cumple mes un día especial sin importar la rutina."},
             {"numero": "5", "titulo": "Confianza ciega", "descripcion": "Construir la base de la relación en la lealtad y el respeto."},
             {"numero": "6", "titulo": "Tiempo de calidad a la distancia", "descripcion": "Compartir citas virtuales, películas o llamadas sin distracciones."},
-            {"numero": "7", "titulo": "Planificar nuestro reencuentro", "Descripcion": "Mantener viva la ilusión de los viajes y abrazos futuros."},
+            {"numero": "7", "titulo": "Planificar nuestro reencuentro", "descripcion": "Mantener viva la ilusión de los viajes y abrazos futuros."},
             {"numero": "8", "titulo": "Resolver los malentendidos con amor", "descripcion": "Nunca irnos a dormir enojados el uno con el otro."},
             {"numero": "9", "titulo": "Espacio personal e individualidad", "descripcion": "Acompañarnos sin perder el crecimiento propio."},
             {"numero": "10", "titulo": "Elegirnos todos los días", "descripcion": "Recordar por qué iniciamos esta historia aquel 21 de abril."}
@@ -246,7 +250,6 @@ def actualizar_hito(fila_num, datos_actualizados):
     if sh:
         try:
             ws = sh.worksheet("Hitos")
-            # Reemplazar la fila entera (de la columna A a la F)
             rango = f"A{fila_num}:F{fila_num}"
             ws.update(rango, [[str(x) for x in datos_actualizados]], value_input_option="USER_ENTERED")
             return True, None
@@ -365,26 +368,20 @@ if menu == "📖 Nuestra Línea de Tiempo":
     df_hitos = obtener_datos("Hitos")
 
     if not df_hitos.empty:
-        # Búsqueda dinámica de columna de fecha
-        col_fecha = [c for c in df_hitos.columns if "fecha" in str(c).lower()]
-        if col_fecha:
-            df_hitos["Fecha_DT"] = pd.to_datetime(df_hitos[col_fecha[0]], errors='coerce')
-            df_hitos = df_hitos.sort_values(by="Fecha_DT", ascending=False)
-
         for idx, r in df_hitos.iterrows():
-            # Extraer campos de manera insensible a mayúsculas
-            creador_val = str(r.get("creador", r.get("Creador", ""))).strip().lower()
+            # Estrategia de recuperación resiliente (por clave o por índice de columna)
+            id_val = str(r.get("id", r.get("col_0", datetime.now().strftime("%Y%m%d%H%M%S"))))
+            fecha_val = str(r.get("fecha", r.get("col_1", "")))
+            titulo_val = str(r.get("titulo", r.get("col_2", "")))
+            cat_val = str(r.get("categoria", r.get("col_3", "")))
+            creador_val = str(r.get("creador", r.get("col_4", ""))).strip().lower()
+            desc_val = str(r.get("descripcion", r.get("col_5", "")))
+            fila_num = r.get("_fila_num")
+
             es_maca = "maca" in creador_val
             css_class = "card-maca" if es_maca else "card-fede"
             tag_class = "tag-maca" if es_maca else "tag-fede"
             avatar = "👩 Maca" if es_maca else "👨 Fede"
-            
-            id_val = str(r.get("id", r.get("ID", datetime.now().strftime("%Y%m%d%H%M%S"))))
-            titulo_val = str(r.get("titulo", r.get("Titulo", "")))
-            desc_val = str(r.get("descripcion", r.get("Descripcion", "")))
-            cat_val = str(r.get("categoria", r.get("Categoria", "")))
-            fecha_val = str(r.get("fecha", r.get("Fecha", "")))
-            fila_num = r.get("_fila_num")
 
             col_card, col_action = st.columns([0.88, 0.12])
 
@@ -419,7 +416,7 @@ if menu == "📖 Nuestra Línea de Tiempo":
                         else:
                             st.error(f"Error borrando: {err_del}")
 
-            # Formulario de edición que se activa al presionar ✏️
+            # Modal interactivo para edición
             if st.session_state.get(f"edit_mode_{fila_num}", False):
                 with st.container():
                     st.info(f"✏️ **Editando Recuerdo:** {titulo_val}")
@@ -478,9 +475,9 @@ elif menu == "📜 Los 10 Mandamientos":
         for idx, r in df_mandamientos.iterrows():
             target_col = col_m1 if idx % 2 == 0 else col_m2
             
-            num_val = r.get("numero", r.get("Numero", idx+1))
-            titulo_val = r.get("titulo", r.get("Titulo", ""))
-            desc_val = r.get("descripcion", r.get("Descripcion", ""))
+            num_val = r.get("numero", r.get("col_0", idx+1))
+            titulo_val = r.get("titulo", r.get("col_1", ""))
+            desc_val = r.get("descripcion", r.get("col_2", ""))
             
             with target_col:
                 st.markdown(
