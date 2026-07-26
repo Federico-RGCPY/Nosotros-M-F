@@ -146,7 +146,7 @@ st.markdown(
 )
 
 # -----------------------------------------------------------------------------
-# 2. CONEXIÓN Y DATOS DE RESPALDO (FALLBACK)
+# 2. CONEXIÓN A GOOGLE SHEETS
 # -----------------------------------------------------------------------------
 scopes = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -154,19 +154,20 @@ scopes = [
 ]
 
 def conectar_sheet():
-    if "gcp_json" in st.secrets:
-        try:
-            json_raw = st.secrets["gcp_json"].strip("'\"")
-            creds_dict = json.loads(json_raw, strict=False)
-            credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-            gc = gspread.authorize(credentials)
-            return gc.open_by_key(SPREADSHEET_ID)
-        except Exception as e:
-            return None
-    return None
+    if "gcp_json" not in st.secrets:
+        return None, "Falta configurar 'gcp_json' en los Secretos de Streamlit Cloud."
+    try:
+        json_raw = st.secrets["gcp_json"].strip("'\"")
+        creds_dict = json.loads(json_raw, strict=False)
+        credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        gc = gspread.authorize(credentials)
+        sh = gc.open_by_key(SPREADSHEET_ID)
+        return sh, None
+    except Exception as e:
+        return None, str(e)
 
 def obtener_datos(pestana_nombre):
-    sh = conectar_sheet()
+    sh, err = conectar_sheet()
     if sh:
         try:
             ws = sh.worksheet(pestana_nombre)
@@ -180,7 +181,7 @@ def obtener_datos(pestana_nombre):
         except Exception:
             pass
             
-    # Datos por defecto si falla la conexión
+    # Datos por defecto de los mandamientos si la conexión falla
     if pestana_nombre == "Mandamientos":
         return pd.DataFrame([
             {"Numero": 1, "Titulo": "Comunicación sincera siempre", "Descripcion": "Hablar de nuestras emociones con amor y transparencia."},
@@ -197,17 +198,15 @@ def obtener_datos(pestana_nombre):
     return pd.DataFrame()
 
 def guardar_hito(nuevo_hito):
-    sh = conectar_sheet()
+    sh, err = conectar_sheet()
     if sh:
         try:
             ws = sh.worksheet("Hitos")
             ws.append_row([str(x) for x in nuevo_hito], value_input_option="USER_ENTERED")
-            return True
+            return True, None
         except Exception as e:
-            st.error(f"Error guardando hito: {e}")
-            return False
-    st.warning("⚠️ No se pudo conectar a Google Sheets. Revisa que compartiste la planilla con el bot.")
-    return False
+            return False, f"Error al escribir en la pestaña Hitos: {e}"
+    return False, f"No se pudo conectar con el documento: {err}"
 
 # -----------------------------------------------------------------------------
 # 3. ENCABEZADO Y CONTADOR
@@ -264,9 +263,10 @@ menu = st.radio(
 
 st.markdown("---")
 
-# Verificación visual rápida de conexión
-if not conectar_sheet():
-    st.info("ℹ️ **Nota de estado:** La app está corriendo en modo rápido. Para sincronizar en vivo con tu Google Sheet, recuerda darle permisos de Editor en tu archivo a: `streamlit-bot@facturacion-grafimaster.iam.gserviceaccount.com`")
+# Comprobación de estado de conexión directo en la interfaz
+sh_test, err_test = conectar_sheet()
+if not sh_test:
+    st.warning(f"⚠️ **Atención:** La aplicación no está conectada a Google Sheets. Motivo: `{err_test}`")
 
 # =============================================================================
 # SECCIÓN 1: LÍNEA DE TIEMPO DE HITOS
@@ -301,9 +301,12 @@ if menu == "📖 Nuestra Línea de Tiempo":
                         creador_clean,
                         descripcion.strip()
                     ]
-                    if guardar_hito(nuevo_registro):
+                    exito, msg_err = guardar_hito(nuevo_registro)
+                    if exito:
                         st.success("✨ ¡Recuerdo guardado con éxito!")
                         st.rerun()
+                    else:
+                        st.error(f"❌ Error al guardar: {msg_err}")
 
     st.subheader("⏳ Nuestra Historia")
 
