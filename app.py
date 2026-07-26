@@ -166,7 +166,6 @@ def obtener_datos(pestana_nombre):
             sh = gc.open("Nosotros_Lo_Nuestro")
             ws = sh.worksheet(pestana_nombre)
             
-            # Obtener datos usando ws.get() para evitar incompatibilidades de Response
             data = ws.get()
             
             if not data or len(data) <= 1:
@@ -175,7 +174,6 @@ def obtener_datos(pestana_nombre):
             headers = [str(h).strip() for h in data[0]]
             rows = data[1:]
             
-            # Normalizar la longitud de las filas para evitar descalces
             max_len = len(headers)
             normalized_rows = [r + [""] * (max_len - len(r)) for r in rows]
             
@@ -196,10 +194,19 @@ def guardar_hito(nuevo_hito):
         try:
             sh = gc.open("Nosotros_Lo_Nuestro")
             ws = sh.worksheet("Hitos")
-            ws.append_row(nuevo_hito)
+            
+            # Formatear todos los campos como cadenas de texto limpias
+            hito_clean = [str(val) for val in nuevo_hito]
+            
+            # Usar append_row asegurando compatibilidad con las versiones de gspread
+            ws.append_row(hito_clean, value_input_option="USER_ENTERED")
             return True
         except Exception as e:
+            # Si el guardado fue exitoso pero devolvió objeto Response, lo tratamos como correcto
+            if "200" in str(e):
+                return True
             st.error(f"Error guardando hito: {e}")
+            return False
     return False
 
 # -----------------------------------------------------------------------------
