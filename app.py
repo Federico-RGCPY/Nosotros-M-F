@@ -89,7 +89,6 @@ st.markdown(
         margin: 10px 0;
     }
 
-    /* Tarjetas de Línea de Tiempo */
     .card-maca {
         border-left: 6px solid #ec4899;
         background-color: #ffffff;
@@ -126,7 +125,6 @@ st.markdown(
         font-size: 0.9rem;
     }
 
-    /* Pizarra de Mandamientos */
     .mandamiento-card {
         background: #ffffff;
         border-radius: 15px;
@@ -146,46 +144,30 @@ st.markdown(
 )
 
 # -----------------------------------------------------------------------------
-# 2. CONEXIÓN Y LIMPIEZA DE CREDENCIALES
+# 2. CONEXIÓN A GOOGLE SHEETS
 # -----------------------------------------------------------------------------
 scopes = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
 
-def limpiar_private_key(key_raw: str) -> str:
-    """Asegura que la clave PEM tenga el formato de saltos de línea correcto."""
-    if not key_raw:
-        return ""
-    key = str(key_raw).strip("'\"")
-    # Convertir secuencias escapadas en saltos de línea reales
-    key = key.replace("\\\\n", "\n").replace("\\n", "\n")
-    # Formatear encabezados si quedaron comprimidos
-    if "-----BEGIN PRIVATE KEY-----" in key and "\n" not in key:
-        key = key.replace("-----BEGIN PRIVATE KEY-----", "-----BEGIN PRIVATE KEY-----\n")
-        key = key.replace("-----END PRIVATE KEY-----", "\n-----END PRIVATE KEY-----")
-    return key.strip()
-
 def conectar_sheet():
     creds_dict = None
-    
-    # Intento 1: Sección [gcp_service_account]
     if "gcp_service_account" in st.secrets:
         creds_dict = dict(st.secrets["gcp_service_account"])
-    # Intento 2: Bloque JSON gcp_json
     elif "gcp_json" in st.secrets:
         try:
-            json_raw = str(st.secrets["gcp_json"]).strip("'\"")
-            creds_dict = json.loads(json_raw, strict=False)
+            creds_dict = json.loads(str(st.secrets["gcp_json"]).strip("'\""), strict=False)
         except Exception as e:
-            return None, f"Error al parsear gcp_json: {e}"
+            return None, f"Error en gcp_json: {e}"
             
     if not creds_dict:
-        return None, "Falta la configuración de credenciales en los Secrets de Streamlit."
+        return None, "Falta la configuración de credenciales en Secrets."
 
     try:
-        if "private_key" in creds_dict:
-            creds_dict["private_key"] = limpiar_private_key(creds_dict["private_key"])
+        pk = creds_dict.get("private_key", "")
+        if "\\n" in pk:
+            creds_dict["private_key"] = pk.replace("\\n", "\n")
             
         credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         gc = gspread.authorize(credentials)
@@ -209,7 +191,6 @@ def obtener_datos(pestana_nombre):
         except Exception:
             pass
             
-    # Mandamientos por defecto si la conexión falla
     if pestana_nombre == "Mandamientos":
         return pd.DataFrame([
             {"Numero": 1, "Titulo": "Comunicación sincera siempre", "Descripcion": "Hablar de nuestras emociones con amor y transparencia."},
@@ -233,7 +214,7 @@ def guardar_hito(nuevo_hito):
             ws.append_row([str(x) for x in nuevo_hito], value_input_option="USER_ENTERED")
             return True, None
         except Exception as e:
-            return False, f"Error escribiendo en Hitos: {e}"
+            return False, f"Error al escribir en Hitos: {e}"
     return False, f"Sin conexión: {err}"
 
 # -----------------------------------------------------------------------------
@@ -291,7 +272,6 @@ menu = st.radio(
 
 st.markdown("---")
 
-# Comprobación de conexión en vivo
 sh_test, err_test = conectar_sheet()
 if not sh_test:
     st.warning(f"⚠️ **Atención:** La aplicación no está conectada a Google Sheets. Motivo: `{err_test}`")
