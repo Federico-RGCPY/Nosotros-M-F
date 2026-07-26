@@ -15,7 +15,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# 🗓️ FECHA DE INICIO ACTUALIZADA A 2026
+# 🗓️ FECHA DE INICIO DE LA RELACIÓN
 FECHA_INICIO = date(2026, 4, 21)  
 
 # Estilos CSS Románticos y Modernos
@@ -165,9 +165,25 @@ def obtener_datos(pestana_nombre):
         try:
             sh = gc.open("Nosotros_Lo_Nuestro")
             ws = sh.worksheet(pestana_nombre)
-            return pd.DataFrame(ws.get_all_records())
+            
+            rows = ws.get_all_values()
+            
+            if not rows or len(rows) <= 1:
+                return pd.DataFrame()
+            
+            headers = [str(h).strip() for h in rows[0]]
+            data = rows[1:]
+            
+            df = pd.DataFrame(data, columns=headers)
+            df = df.dropna(how='all')
+            
+            if "Titulo" in df.columns:
+                df = df[df["Titulo"].astype(str).str.strip() != ""]
+                
+            return df
         except Exception as e:
             st.error(f"Error leyendo {pestana_nombre}: {e}")
+            return pd.DataFrame()
     return pd.DataFrame()
 
 def guardar_hito(nuevo_hito):
@@ -208,7 +224,6 @@ with col_der:
     dias_juntos = (hoy - FECHA_INICIO).days
     meses_cumplidos = (hoy.year - FECHA_INICIO.year) * 12 + hoy.month - FECHA_INICIO.month
 
-    # Asegurar que no muestre números negativos si la fecha es hoy o posterior
     dias_mostrar = max(0, dias_juntos)
     meses_mostrar = max(0, meses_cumplidos)
 
@@ -283,7 +298,6 @@ if menu == "📖 Nuestra Línea de Tiempo":
     df_hitos = obtener_datos("Hitos")
 
     if not df_hitos.empty:
-        # Ordenar por fecha descendente
         df_hitos["Fecha_DT"] = pd.to_datetime(df_hitos["Fecha"], errors='coerce')
         df_hitos = df_hitos.sort_values(by="Fecha_DT", ascending=False)
 
