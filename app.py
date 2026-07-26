@@ -18,8 +18,8 @@ st.set_page_config(
 # 🗓️ FECHA DE INICIO DE LA RELACIÓN
 FECHA_INICIO = date(2026, 4, 21)  
 
-# 🔑 ID DE TU GOOGLE SHEET
-SPREADSHEET_ID = "1cvt3CXiA4yWn-_OVUxbc3_-QoI4gLBW3"
+# 🔑 NUEVO ID DE GOOGLE SHEETS NATIVO
+SPREADSHEET_ID = "1o6dSXS4nSyC3M-20RaOQzpRsxEyVySnuu5KdzIZLyAo"
 
 # Estilos CSS Románticos y Modernos
 st.markdown(
