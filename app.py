@@ -146,23 +146,36 @@ st.markdown(
 )
 
 # -----------------------------------------------------------------------------
-# 2. CONEXIÓN ROBUSTA A GOOGLE SHEETS
+# 2. CONEXIÓN Y LIMPIEZA DE CREDENCIALES
 # -----------------------------------------------------------------------------
 scopes = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
 
+def limpiar_private_key(key_raw: str) -> str:
+    """Asegura que la clave PEM tenga el formato de saltos de línea correcto."""
+    if not key_raw:
+        return ""
+    key = str(key_raw).strip("'\"")
+    # Convertir secuencias escapadas en saltos de línea reales
+    key = key.replace("\\\\n", "\n").replace("\\n", "\n")
+    # Formatear encabezados si quedaron comprimidos
+    if "-----BEGIN PRIVATE KEY-----" in key and "\n" not in key:
+        key = key.replace("-----BEGIN PRIVATE KEY-----", "-----BEGIN PRIVATE KEY-----\n")
+        key = key.replace("-----END PRIVATE KEY-----", "\n-----END PRIVATE KEY-----")
+    return key.strip()
+
 def conectar_sheet():
     creds_dict = None
     
-    # Intento 1: Formato TOML [gcp_service_account]
+    # Intento 1: Sección [gcp_service_account]
     if "gcp_service_account" in st.secrets:
         creds_dict = dict(st.secrets["gcp_service_account"])
-    # Intento 2: Formato JSON plano string
+    # Intento 2: Bloque JSON gcp_json
     elif "gcp_json" in st.secrets:
         try:
-            json_raw = st.secrets["gcp_json"].strip("'\"")
+            json_raw = str(st.secrets["gcp_json"]).strip("'\"")
             creds_dict = json.loads(json_raw, strict=False)
         except Exception as e:
             return None, f"Error al parsear gcp_json: {e}"
@@ -172,7 +185,7 @@ def conectar_sheet():
 
     try:
         if "private_key" in creds_dict:
-            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+            creds_dict["private_key"] = limpiar_private_key(creds_dict["private_key"])
             
         credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         gc = gspread.authorize(credentials)
@@ -196,7 +209,7 @@ def obtener_datos(pestana_nombre):
         except Exception:
             pass
             
-    # Mandamientos por defecto si falla la conexión
+    # Mandamientos por defecto si la conexión falla
     if pestana_nombre == "Mandamientos":
         return pd.DataFrame([
             {"Numero": 1, "Titulo": "Comunicación sincera siempre", "Descripcion": "Hablar de nuestras emociones con amor y transparencia."},
@@ -278,7 +291,7 @@ menu = st.radio(
 
 st.markdown("---")
 
-# Verificación de conexión en vivo
+# Comprobación de conexión en vivo
 sh_test, err_test = conectar_sheet()
 if not sh_test:
     st.warning(f"⚠️ **Atención:** La aplicación no está conectada a Google Sheets. Motivo: `{err_test}`")
