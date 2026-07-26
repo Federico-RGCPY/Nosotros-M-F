@@ -171,19 +171,30 @@ def obtener_datos(pestana_nombre):
             if not data or len(data) <= 1:
                 return pd.DataFrame()
             
+            # Limpiar y estandarizar nombres de encabezados
             headers = [str(h).strip() for h in data[0]]
             rows = data[1:]
             
+            # Ajustar la longitud de cada fila al número de columnas
             max_len = len(headers)
             normalized_rows = [r + [""] * (max_len - len(r)) for r in rows]
             
             df = pd.DataFrame(normalized_rows, columns=headers)
             
-            if "Titulo" in df.columns:
-                df = df[df["Titulo"].astype(str).str.strip() != ""]
-                
+            # Eliminar filas totalmente vacías
+            df = df.replace("", None).dropna(how="all")
+            
             return df
         except Exception as e:
+            # Si el error devuelto contiene 200 pero falló el parseo de gspread
+            if "200" in str(e):
+                try:
+                    data = ws.get_all_values()
+                    if len(data) > 1:
+                        headers = [str(h).strip() for h in data[0]]
+                        return pd.DataFrame(data[1:], columns=headers)
+                except Exception:
+                    pass
             st.error(f"Error leyendo {pestana_nombre}: {e}")
             return pd.DataFrame()
     return pd.DataFrame()
@@ -195,14 +206,10 @@ def guardar_hito(nuevo_hito):
             sh = gc.open("Nosotros_Lo_Nuestro")
             ws = sh.worksheet("Hitos")
             
-            # Formatear todos los campos como cadenas de texto limpias
             hito_clean = [str(val) for val in nuevo_hito]
-            
-            # Usar append_row asegurando compatibilidad con las versiones de gspread
             ws.append_row(hito_clean, value_input_option="USER_ENTERED")
             return True
         except Exception as e:
-            # Si el guardado fue exitoso pero devolvió objeto Response, lo tratamos como correcto
             if "200" in str(e):
                 return True
             st.error(f"Error guardando hito: {e}")
@@ -306,29 +313,32 @@ if menu == "📖 Nuestra Línea de Tiempo":
     df_hitos = obtener_datos("Hitos")
 
     if not df_hitos.empty:
-        df_hitos["Fecha_DT"] = pd.to_datetime(df_hitos["Fecha"], errors='coerce')
-        df_hitos = df_hitos.sort_values(by="Fecha_DT", ascending=False)
+        col_fecha = [c for c in df_hitos.columns if "fecha" in c.lower()]
+        if col_fecha:
+            df_hitos["Fecha_DT"] = pd.to_datetime(df_hitos[col_fecha[0]], errors='coerce')
+            df_hitos = df_hitos.sort_values(by="Fecha_DT", ascending=False)
 
         for _, r in df_hitos.iterrows():
-            es_maca = str(r.get("Creador", "")).strip().lower() == "maca"
+            creador_val = str(r.get("Creador", r.get("creador", ""))).strip().lower()
+            es_maca = creador_val == "maca"
             css_class = "card-maca" if es_maca else "card-fede"
             tag_class = "tag-maca" if es_maca else "tag-fede"
             avatar = "👩 Maca" if es_maca else "👨 Fede"
             
-            if pd.notnull(r.get("Fecha_DT")):
-                fecha_str = r["Fecha_DT"].strftime("%d/%m/%Y")
-            else:
-                fecha_str = str(r.get("Fecha", ""))
+            titulo_val = r.get("Titulo", r.get("titulo", ""))
+            desc_val = r.get("Descripcion", r.get("descripcion", ""))
+            cat_val = r.get("Categoria", r.get("categoria", ""))
+            fecha_val = r.get("Fecha", r.get("fecha", ""))
 
             st.markdown(
                 f"""
                 <div class='{css_class}'>
                     <div style='display: flex; justify-content: space-between; align-items: center;'>
                         <span class='{tag_class}'>{avatar}</span>
-                        <span style='color: #64748b; font-size: 0.85rem; font-weight: 600;'>📅 {fecha_str} &nbsp;|&nbsp; {r.get('Categoria', '')}</span>
+                        <span style='color: #64748b; font-size: 0.85rem; font-weight: 600;'>📅 {fecha_val} &nbsp;|&nbsp; {cat_val}</span>
                     </div>
-                    <h3 style='color: #1e293b; margin-top: 15px; margin-bottom: 5px; font-family: "Playfair Display", serif;'>{r.get('Titulo', '')}</h3>
-                    <p style='color: #475569; font-size: 1rem; line-height: 1.6;'>{r.get('Descripcion', '')}</p>
+                    <h3 style='color: #1e293b; margin-top: 15px; margin-bottom: 5px; font-family: "Playfair Display", serif;'>{titulo_val}</h3>
+                    <p style='color: #475569; font-size: 1rem; line-height: 1.6;'>{desc_val}</p>
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -347,21 +357,27 @@ elif menu == "📜 Los 10 Mandamientos":
 
     if not df_mandamientos.empty:
         col_m1, col_m2 = st.columns(2)
+        
         for idx, r in df_mandamientos.iterrows():
             target_col = col_m1 if idx % 2 == 0 else col_m2
+            
+            num_val = r.get("Numero", r.get("numero", r.get("Número", idx+1)))
+            titulo_val = r.get("Titulo", r.get("titulo", ""))
+            desc_val = r.get("Descripcion", r.get("descripcion", ""))
+            
             with target_col:
                 st.markdown(
                     f"""
                     <div class='mandamiento-card'>
-                        <div style='color: #e11d48; font-weight: 800; font-size: 1.2rem; margin-bottom: 5px;'>Mandamiento #{r.get('Numero', idx+1)}</div>
-                        <h4 style='margin-top: 0px; margin-bottom: 10px; color: #1e293b;'>{r.get('Titulo', '')}</h4>
-                        <p style='color: #64748b; font-size: 0.95rem; line-height: 1.4; margin: 0;'>{r.get('Descripcion', '')}</p>
+                        <div style='color: #e11d48; font-weight: 800; font-size: 1.2rem; margin-bottom: 5px;'>Mandamiento #{num_val}</div>
+                        <h4 style='margin-top: 0px; margin-bottom: 10px; color: #1e293b;'>{titulo_val}</h4>
+                        <p style='color: #64748b; font-size: 0.95rem; line-height: 1.4; margin: 0;'>{desc_val}</p>
                     </div>
                     """,
                     unsafe_allow_html=True
                 )
     else:
-        st.info("No se pudieron cargar los mandamientos. Revisa la pestaña 'Mandamientos' en Google Sheets.")
+        st.info("No se pudieron cargar los mandamientos. Revisa que la pestaña se llame exactamente 'Mandamientos' en Google Sheets.")
 
 # =============================================================================
 # SECCIÓN 3: ENVIAR MENSAJE DE WHATSAPP
