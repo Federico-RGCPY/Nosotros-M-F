@@ -15,8 +15,8 @@ st.set_page_config(
     layout="wide"
 )
 
-# Fecha de inicio de la relación
-FECHA_INICIO = date(2024, 4, 21)  
+# 🗓️ FECHA DE INICIO ACTUALIZADA A 2026
+FECHA_INICIO = date(2026, 4, 21)  
 
 # Estilos CSS Románticos y Modernos
 st.markdown(
@@ -208,12 +208,16 @@ with col_der:
     dias_juntos = (hoy - FECHA_INICIO).days
     meses_cumplidos = (hoy.year - FECHA_INICIO.year) * 12 + hoy.month - FECHA_INICIO.month
 
+    # Asegurar que no muestre números negativos si la fecha es hoy o posterior
+    dias_mostrar = max(0, dias_juntos)
+    meses_mostrar = max(0, meses_cumplidos)
+
     st.markdown(
         f"""
         <div class='counter-box'>
             <div style='font-size: 1.1rem; text-transform: uppercase; letter-spacing: 2px;'>Días Construyendo Nuestra Historia</div>
-            <div class='counter-number'>{dias_juntos} DÍAS</div>
-            <div style='font-size: 1rem;'>Desde el 21 de Abril de 2024 ({meses_cumplidos} meses hermosos)</div>
+            <div class='counter-number'>{dias_mostrar} DÍAS</div>
+            <div style='font-size: 1rem;'>Desde el 21 de Abril de 2026 ({meses_mostrar} meses hermosos)</div>
         </div>
         """,
         unsafe_allow_html=True
@@ -224,7 +228,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 # Alerta de Cumplemes si hoy es día 21
 if hoy.day == 21:
     st.balloons()
-    st.success(f"🎉 ¡FELIZ CUMPLE MES MI AMOR! Hoy celebramos {meses_cumplidos} meses de elegirnos. ❤️")
+    st.success(f"🎉 ¡FELIZ CUMPLE MES MI AMOR! Hoy celebramos {meses_mostrar} meses de elegirnos. ❤️")
 
 # -----------------------------------------------------------------------------
 # 4. MENÚ DE NAVEGACIÓN
@@ -346,7 +350,7 @@ elif menu == "📲 Celebrar en WhatsApp":
 
     destinatario = st.radio("¿A quién le vas a enviar el mensaje?", ["A Macarena 👩🇨🇱", "A Federico 👨🇵🇾"], horizontal=True)
 
-    msj_default = f"¡Feliz Cumple Mes #{meses_cumplidos} mi amor! ❤️\n\nHoy celebramos {dias_juntos} días construyendo nuestra historia. Gracias por elegirme todos los días a pesar de la distancia.\n\nTe amo muchísimo, de Chile a Paraguay y de regreso. ✈️💖"
+    msj_default = f"¡Feliz Cumple Mes #{meses_mostrar} mi amor! ❤️\n\nHoy celebramos {dias_mostrar} días construyendo nuestra historia. Gracias por elegirme todos los días a pesar de la distancia.\n\nTe amo muchísimo, de Chile a Paraguay y de regreso. ✈️💖"
 
     mensaje_personalizado = st.text_area("Edita tu mensaje aquí:", value=msj_default, height=150)
 
