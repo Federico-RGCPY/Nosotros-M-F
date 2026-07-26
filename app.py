@@ -176,6 +176,14 @@ def conectar_sheet():
     except Exception as e:
         return None, str(e)
 
+def limpiar_string(texto):
+    """Normaliza texto removiendo acentos y convirtiendo a minúsculas para búsqueda de columnas flex."""
+    replacements = (("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u"))
+    s = str(texto).lower().strip()
+    for a, b in replacements:
+        s = s.replace(a, b)
+    return s
+
 def obtener_datos(pestana_nombre):
     sh, err = conectar_sheet()
     if sh:
@@ -183,16 +191,22 @@ def obtener_datos(pestana_nombre):
             ws = sh.worksheet(pestana_nombre)
             vals = ws.get_all_values()
             if len(vals) > 1:
-                # Normalizar encabezados (quitar espacios extra y pasar a formato estándar)
-                headers = [str(h).strip().title() for h in vals[0]]
+                headers_raw = [str(h).strip() for h in vals[0]]
                 data = vals[1:]
-                max_cols = len(headers)
+                max_cols = len(headers_raw)
                 
                 rows_clean = []
                 for idx, r in enumerate(data):
                     row_data = r + [""] * (max_cols - len(r))
-                    row_dict = dict(zip(headers, row_data))
-                    row_dict["_fila_num"] = idx + 2  # Guardar el número de fila real en Sheets (1-indexed + header)
+                    row_dict = {}
+                    
+                    for raw_h, val in zip(headers_raw, row_data):
+                        clean_key = limpiar_string(raw_h)
+                        row_dict[clean_key] = val
+                        # También conservamos el nombre original por respaldo
+                        row_dict[raw_h] = val
+                        
+                    row_dict["_fila_num"] = idx + 2
                     rows_clean.append(row_dict)
                     
                 df = pd.DataFrame(rows_clean)
@@ -200,19 +214,19 @@ def obtener_datos(pestana_nombre):
         except Exception:
             pass
             
-    # Mandamientos por defecto si la conexión o pestaña no se encuentra
+    # Mandamientos de respaldo por si falla la conexión
     if pestana_nombre == "Mandamientos":
         return pd.DataFrame([
-            {"Numero": 1, "Titulo": "Comunicación sincera siempre", "Descripcion": "Hablar de nuestras emociones con amor y transparencia."},
-            {"Numero": 2, "Titulo": "Cuidar la distancia con detalles", "Descripcion": "Recordarnos todos los días lo mucho que nos importamos."},
-            {"Numero": 3, "Titulo": "Apoyar los sueños del otro", "Descripcion": "Ser el refugio y el impulso mutuo en cada proyecto."},
-            {"Numero": 4, "Titulo": "Celebrar cada 21", "Descripcion": "Hacer de nuestro cumple mes un día especial sin importar la rutina."},
-            {"Numero": 5, "Titulo": "Confianza ciega", "Descripcion": "Construir la base de la relación en la lealtad y el respeto."},
-            {"Numero": 6, "Titulo": "Tiempo de calidad a la distancia", "Descripcion": "Compartir citas virtuales, películas o llamadas sin distracciones."},
-            {"Numero": 7, "Titulo": "Planificar nuestro reencuentro", "Descripcion": "Mantener viva la ilusión de los viajes y abrazos futuros."},
-            {"Numero": 8, "Titulo": "Resolver los malentendidos con amor", "Descripcion": "Nunca irnos a dormir enojados el uno con el otro."},
-            {"Numero": 9, "Titulo": "Espacio personal e individualidad", "Descripcion": "Acompañarnos sin perder el crecimiento propio."},
-            {"Numero": 10, "Titulo": "Elegirnos todos los días", "Descripcion": "Recordar por qué iniciamos esta historia aquel 21 de abril."}
+            {"numero": "1", "titulo": "Comunicación sincera siempre", "descripcion": "Hablar de nuestras emociones con amor y transparencia."},
+            {"numero": "2", "titulo": "Cuidar la distancia con detalles", "descripcion": "Recordarnos todos los días lo mucho que nos importamos."},
+            {"numero": "3", "titulo": "Apoyar los sueños del otro", "descripcion": "Ser el refugio y el impulso mutuo en cada proyecto."},
+            {"numero": "4", "titulo": "Celebrar cada 21", "descripcion": "Hacer de nuestro cumple mes un día especial sin importar la rutina."},
+            {"numero": "5", "titulo": "Confianza ciega", "descripcion": "Construir la base de la relación en la lealtad y el respeto."},
+            {"numero": "6", "titulo": "Tiempo de calidad a la distancia", "descripcion": "Compartir citas virtuales, películas o llamadas sin distracciones."},
+            {"numero": "7", "titulo": "Planificar nuestro reencuentro", "Descripcion": "Mantener viva la ilusión de los viajes y abrazos futuros."},
+            {"numero": "8", "titulo": "Resolver los malentendidos con amor", "descripcion": "Nunca irnos a dormir enojados el uno con el otro."},
+            {"numero": "9", "titulo": "Espacio personal e individualidad", "descripcion": "Acompañarnos sin perder el crecimiento propio."},
+            {"numero": "10", "titulo": "Elegirnos todos los días", "descripcion": "Recordar por qué iniciamos esta historia aquel 21 de abril."}
         ])
     return pd.DataFrame()
 
@@ -226,6 +240,19 @@ def guardar_hito(nuevo_hito):
         except Exception as e:
             return False, f"Error al escribir en Hitos: {e}"
     return False, f"Sin conexión: {err}"
+
+def actualizar_hito(fila_num, datos_actualizados):
+    sh, err = conectar_sheet()
+    if sh:
+        try:
+            ws = sh.worksheet("Hitos")
+            # Reemplazar la fila entera (de la columna A a la F)
+            rango = f"A{fila_num}:F{fila_num}"
+            ws.update(rango, [[str(x) for x in datos_actualizados]], value_input_option="USER_ENTERED")
+            return True, None
+        except Exception as e:
+            return False, str(e)
+    return False, err
 
 def eliminar_hito(fila_num):
     sh, err = conectar_sheet()
@@ -338,26 +365,28 @@ if menu == "📖 Nuestra Línea de Tiempo":
     df_hitos = obtener_datos("Hitos")
 
     if not df_hitos.empty:
-        # Ordenar cronológicamente si existe columna de fecha
-        col_fecha = [c for c in df_hitos.columns if "fecha" in c.lower()]
+        # Búsqueda dinámica de columna de fecha
+        col_fecha = [c for c in df_hitos.columns if "fecha" in str(c).lower()]
         if col_fecha:
             df_hitos["Fecha_DT"] = pd.to_datetime(df_hitos[col_fecha[0]], errors='coerce')
             df_hitos = df_hitos.sort_values(by="Fecha_DT", ascending=False)
 
-        for _, r in df_hitos.iterrows():
-            creador_val = str(r.get("Creador", r.get("creador", ""))).strip().lower()
-            es_maca = creador_val == "maca"
+        for idx, r in df_hitos.iterrows():
+            # Extraer campos de manera insensible a mayúsculas
+            creador_val = str(r.get("creador", r.get("Creador", ""))).strip().lower()
+            es_maca = "maca" in creador_val
             css_class = "card-maca" if es_maca else "card-fede"
             tag_class = "tag-maca" if es_maca else "tag-fede"
             avatar = "👩 Maca" if es_maca else "👨 Fede"
             
-            titulo_val = r.get("Titulo", r.get("titulo", ""))
-            desc_val = r.get("Descripcion", r.get("descripcion", ""))
-            cat_val = r.get("Categoria", r.get("categoria", ""))
-            fecha_val = r.get("Fecha", r.get("fecha", ""))
+            id_val = str(r.get("id", r.get("ID", datetime.now().strftime("%Y%m%d%H%M%S"))))
+            titulo_val = str(r.get("titulo", r.get("Titulo", "")))
+            desc_val = str(r.get("descripcion", r.get("Descripcion", "")))
+            cat_val = str(r.get("categoria", r.get("Categoria", "")))
+            fecha_val = str(r.get("fecha", r.get("Fecha", "")))
             fila_num = r.get("_fila_num")
 
-            col_card, col_action = st.columns([0.9, 0.1])
+            col_card, col_action = st.columns([0.88, 0.12])
 
             with col_card:
                 st.markdown(
@@ -375,14 +404,62 @@ if menu == "📖 Nuestra Línea de Tiempo":
                 )
             
             with col_action:
-                if fila_num:
-                    if st.button("❌", key=f"btn_del_{fila_num}", help="Eliminar este hito de Google Sheets"):
+                c_edit, c_del = st.columns(2)
+                
+                with c_edit:
+                    if st.button("✏️", key=f"btn_edit_{fila_num}_{idx}", help="Editar hito"):
+                        st.session_state[f"edit_mode_{fila_num}"] = not st.session_state.get(f"edit_mode_{fila_num}", False)
+
+                with c_del:
+                    if st.button("❌", key=f"btn_del_{fila_num}_{idx}", help="Eliminar hito"):
                         ok_del, err_del = eliminar_hito(fila_num)
                         if ok_del:
                             st.success("Hito eliminado.")
                             st.rerun()
                         else:
                             st.error(f"Error borrando: {err_del}")
+
+            # Formulario de edición que se activa al presionar ✏️
+            if st.session_state.get(f"edit_mode_{fila_num}", False):
+                with st.container():
+                    st.info(f"✏️ **Editando Recuerdo:** {titulo_val}")
+                    with st.form(f"form_edit_{fila_num}"):
+                        ce1, ce2, ce3 = st.columns([1, 1, 1])
+                        with ce1:
+                            creador_edit = st.radio("Creador", ["👩 Maca", "👨 Fede"], index=0 if es_maca else 1, key=f"c_ed_{fila_num}")
+                        with ce2:
+                            try:
+                                default_dt = pd.to_datetime(fecha_val).date()
+                            except Exception:
+                                default_dt = hoy
+                            fecha_edit = st.date_input("Fecha", value=default_dt, key=f"f_ed_{fila_num}")
+                        with ce3:
+                            cat_list = ["Viaje ✈️", "Anécdota 🤭", "Proyecto 🚀", "Regalo 🎁", "Cita a Distancia 💻", "Especial ❤️"]
+                            cat_index = cat_list.index(cat_val) if cat_val in cat_list else 0
+                            cat_edit = st.selectbox("Categoría", cat_list, index=cat_index, key=f"cat_ed_{fila_num}")
+
+                        titulo_edit = st.text_input("Título", value=titulo_val, key=f"t_ed_{fila_num}")
+                        desc_edit = st.text_area("Descripción", value=desc_val, key=f"d_ed_{fila_num}")
+
+                        btn_guardar_edit = st.form_submit_button("💾 Guardar Cambios")
+
+                        if btn_guardar_edit:
+                            creador_clean_edit = "Maca" if "Maca" in creador_edit else "Fede"
+                            datos_act = [
+                                id_val,
+                                str(fecha_edit),
+                                titulo_edit.strip(),
+                                cat_edit,
+                                creador_clean_edit,
+                                desc_edit.strip()
+                            ]
+                            ok_upd, err_upd = actualizar_hito(fila_num, datos_act)
+                            if ok_upd:
+                                st.success("✨ Recuerdo actualizado.")
+                                st.session_state[f"edit_mode_{fila_num}"] = False
+                                st.rerun()
+                            else:
+                                st.error(f"Error al actualizar: {err_upd}")
     else:
         st.info("Aún no hay recuerdos registrados. ¡Abran el panel de arriba para registrar el primero!")
 
@@ -401,9 +478,9 @@ elif menu == "📜 Los 10 Mandamientos":
         for idx, r in df_mandamientos.iterrows():
             target_col = col_m1 if idx % 2 == 0 else col_m2
             
-            num_val = r.get("Numero", r.get("numero", r.get("Número", idx+1)))
-            titulo_val = r.get("Titulo", r.get("titulo", ""))
-            desc_val = r.get("Descripcion", r.get("descripcion", ""))
+            num_val = r.get("numero", r.get("Numero", idx+1))
+            titulo_val = r.get("titulo", r.get("Titulo", ""))
+            desc_val = r.get("descripcion", r.get("Descripcion", ""))
             
             with target_col:
                 st.markdown(
