@@ -18,7 +18,7 @@ st.set_page_config(
 # 🗓️ FECHA DE INICIO DE LA RELACIÓN
 FECHA_INICIO = date(2026, 4, 21)  
 
-# 🔑 NUEVO ID DE GOOGLE SHEETS NATIVO
+# 🔑 ID DE TU GOOGLE SHEET NATIVO
 SPREADSHEET_ID = "1o6dSXS4nSyC3M-20RaOQzpRsxEyVySnuu5KdzIZLyAo"
 
 # Estilos CSS Románticos y Modernos
@@ -144,7 +144,7 @@ st.markdown(
 )
 
 # -----------------------------------------------------------------------------
-# 2. CONEXIÓN A GOOGLE SHEETS
+# 2. CONEXIÓN Y OPERACIONES EN GOOGLE SHEETS
 # -----------------------------------------------------------------------------
 scopes = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -183,14 +183,24 @@ def obtener_datos(pestana_nombre):
             ws = sh.worksheet(pestana_nombre)
             vals = ws.get_all_values()
             if len(vals) > 1:
-                headers = [str(h).strip() for h in vals[0]]
+                # Normalizar encabezados (quitar espacios extra y pasar a formato estándar)
+                headers = [str(h).strip().title() for h in vals[0]]
                 data = vals[1:]
                 max_cols = len(headers)
-                data_clean = [r + [""] * (max_cols - len(r)) for r in data]
-                return pd.DataFrame(data_clean, columns=headers)
+                
+                rows_clean = []
+                for idx, r in enumerate(data):
+                    row_data = r + [""] * (max_cols - len(r))
+                    row_dict = dict(zip(headers, row_data))
+                    row_dict["_fila_num"] = idx + 2  # Guardar el número de fila real en Sheets (1-indexed + header)
+                    rows_clean.append(row_dict)
+                    
+                df = pd.DataFrame(rows_clean)
+                return df
         except Exception:
             pass
             
+    # Mandamientos por defecto si la conexión o pestaña no se encuentra
     if pestana_nombre == "Mandamientos":
         return pd.DataFrame([
             {"Numero": 1, "Titulo": "Comunicación sincera siempre", "Descripcion": "Hablar de nuestras emociones con amor y transparencia."},
@@ -216,6 +226,17 @@ def guardar_hito(nuevo_hito):
         except Exception as e:
             return False, f"Error al escribir en Hitos: {e}"
     return False, f"Sin conexión: {err}"
+
+def eliminar_hito(fila_num):
+    sh, err = conectar_sheet()
+    if sh:
+        try:
+            ws = sh.worksheet("Hitos")
+            ws.delete_rows(int(fila_num))
+            return True, None
+        except Exception as e:
+            return False, str(e)
+    return False, err
 
 # -----------------------------------------------------------------------------
 # 3. ENCABEZADO Y CONTADOR
@@ -272,10 +293,6 @@ menu = st.radio(
 
 st.markdown("---")
 
-sh_test, err_test = conectar_sheet()
-if not sh_test:
-    st.warning(f"⚠️ **Atención:** La aplicación no está conectada a Google Sheets. Motivo: `{err_test}`")
-
 # =============================================================================
 # SECCIÓN 1: LÍNEA DE TIEMPO DE HITOS
 # =============================================================================
@@ -321,6 +338,7 @@ if menu == "📖 Nuestra Línea de Tiempo":
     df_hitos = obtener_datos("Hitos")
 
     if not df_hitos.empty:
+        # Ordenar cronológicamente si existe columna de fecha
         col_fecha = [c for c in df_hitos.columns if "fecha" in c.lower()]
         if col_fecha:
             df_hitos["Fecha_DT"] = pd.to_datetime(df_hitos[col_fecha[0]], errors='coerce')
@@ -337,20 +355,34 @@ if menu == "📖 Nuestra Línea de Tiempo":
             desc_val = r.get("Descripcion", r.get("descripcion", ""))
             cat_val = r.get("Categoria", r.get("categoria", ""))
             fecha_val = r.get("Fecha", r.get("fecha", ""))
+            fila_num = r.get("_fila_num")
 
-            st.markdown(
-                f"""
-                <div class='{css_class}'>
-                    <div style='display: flex; justify-content: space-between; align-items: center;'>
-                        <span class='{tag_class}'>{avatar}</span>
-                        <span style='color: #64748b; font-size: 0.85rem; font-weight: 600;'>📅 {fecha_val} &nbsp;|&nbsp; {cat_val}</span>
+            col_card, col_action = st.columns([0.9, 0.1])
+
+            with col_card:
+                st.markdown(
+                    f"""
+                    <div class='{css_class}'>
+                        <div style='display: flex; justify-content: space-between; align-items: center;'>
+                            <span class='{tag_class}'>{avatar}</span>
+                            <span style='color: #64748b; font-size: 0.85rem; font-weight: 600;'>📅 {fecha_val} &nbsp;|&nbsp; {cat_val}</span>
+                        </div>
+                        <h3 style='color: #1e293b; margin-top: 15px; margin-bottom: 5px; font-family: "Playfair Display", serif;'>{titulo_val}</h3>
+                        <p style='color: #475569; font-size: 1rem; line-height: 1.6;'>{desc_val}</p>
                     </div>
-                    <h3 style='color: #1e293b; margin-top: 15px; margin-bottom: 5px; font-family: "Playfair Display", serif;'>{titulo_val}</h3>
-                    <p style='color: #475569; font-size: 1rem; line-height: 1.6;'>{desc_val}</p>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+                    """,
+                    unsafe_allow_html=True
+                )
+            
+            with col_action:
+                if fila_num:
+                    if st.button("❌", key=f"btn_del_{fila_num}", help="Eliminar este hito de Google Sheets"):
+                        ok_del, err_del = eliminar_hito(fila_num)
+                        if ok_del:
+                            st.success("Hito eliminado.")
+                            st.rerun()
+                        else:
+                            st.error(f"Error borrando: {err_del}")
     else:
         st.info("Aún no hay recuerdos registrados. ¡Abran el panel de arriba para registrar el primero!")
 
