@@ -159,6 +159,11 @@ def conectar_sheet():
     try:
         json_raw = st.secrets["gcp_json"].strip("'\"")
         creds_dict = json.loads(json_raw, strict=False)
+        
+        # Corrección automática de saltos de línea en la clave privada
+        if "private_key" in creds_dict:
+            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+            
         credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
         gc = gspread.authorize(credentials)
         sh = gc.open_by_key(SPREADSHEET_ID)
