@@ -166,16 +166,20 @@ def obtener_datos(pestana_nombre):
             sh = gc.open("Nosotros_Lo_Nuestro")
             ws = sh.worksheet(pestana_nombre)
             
-            rows = ws.get_all_values()
+            # Obtener datos usando ws.get() para evitar incompatibilidades de Response
+            data = ws.get()
             
-            if not rows or len(rows) <= 1:
+            if not data or len(data) <= 1:
                 return pd.DataFrame()
             
-            headers = [str(h).strip() for h in rows[0]]
-            data = rows[1:]
+            headers = [str(h).strip() for h in data[0]]
+            rows = data[1:]
             
-            df = pd.DataFrame(data, columns=headers)
-            df = df.dropna(how='all')
+            # Normalizar la longitud de las filas para evitar descalces
+            max_len = len(headers)
+            normalized_rows = [r + [""] * (max_len - len(r)) for r in rows]
+            
+            df = pd.DataFrame(normalized_rows, columns=headers)
             
             if "Titulo" in df.columns:
                 df = df[df["Titulo"].astype(str).str.strip() != ""]
@@ -207,7 +211,6 @@ st.markdown("<div class='sub-header'>CHILE 🇨🇱 ✈️ 🇵🇾 PARAGUAY</di
 col_izq, col_der = st.columns([1, 1.5])
 
 with col_izq:
-    # Tarjeta M&F
     st.markdown(
         """
         <div class='initials-card'>
@@ -219,7 +222,6 @@ with col_izq:
     )
 
 with col_der:
-    # Cálculo de Días Juntos y Meses
     hoy = date.today()
     dias_juntos = (hoy - FECHA_INICIO).days
     meses_cumplidos = (hoy.year - FECHA_INICIO.year) * 12 + hoy.month - FECHA_INICIO.month
@@ -240,7 +242,6 @@ with col_der:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# Alerta de Cumplemes si hoy es día 21
 if hoy.day == 21:
     st.balloons()
     st.success(f"🎉 ¡FELIZ CUMPLE MES MI AMOR! Hoy celebramos {meses_mostrar} meses de elegirnos. ❤️")
