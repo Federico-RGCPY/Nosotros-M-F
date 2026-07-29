@@ -367,7 +367,7 @@ if menu == "📖 Nuestra Línea de Tiempo":
 
     if not df_hitos.empty:
         # ---------------------------------------------------------------------
-        # ORDENAMIENTO CRONOLÓGICO POR FECHA DEL SUCESO (NO FECHA DE CARGA)
+        # ORDENAMIENTO CRONOLÓGICO ASCENDENTE POR FECHA DEL SUCESO
         # ---------------------------------------------------------------------
         col_fecha = None
         for col in df_hitos.columns:
@@ -380,8 +380,8 @@ if menu == "📖 Nuestra Línea de Tiempo":
 
         if col_fecha:
             df_hitos["_fecha_dt"] = pd.to_datetime(df_hitos[col_fecha], errors='coerce')
-            # Ordena de la fecha más reciente a la más antigua
-            df_hitos = df_hitos.sort_values(by="_fecha_dt", ascending=False)
+            # Ordena de la fecha más antigua a la más reciente (ascendente)
+            df_hitos = df_hitos.sort_values(by="_fecha_dt", ascending=True)
 
         # ---------------------------------------------------------------------
         # MOSTRAR BITÁCORAS
