@@ -197,12 +197,10 @@ def obtener_datos(pestana_nombre):
                 
                 rows_clean = []
                 for idx, r in enumerate(data):
-                    # Ignorar filas totalmente vacías
                     if not any(r):
                         continue
                     
                     row_dict = {}
-                    # Guardar por índice de columna de respaldo
                     for c_idx, val in enumerate(r):
                         row_dict[f"col_{c_idx}"] = val
                         if c_idx < len(headers_raw):
@@ -368,8 +366,27 @@ if menu == "📖 Nuestra Línea de Tiempo":
     df_hitos = obtener_datos("Hitos")
 
     if not df_hitos.empty:
+        # ---------------------------------------------------------------------
+        # ORDENAMIENTO CRONOLÓGICO POR FECHA DEL SUCESO (NO FECHA DE CARGA)
+        # ---------------------------------------------------------------------
+        col_fecha = None
+        for col in df_hitos.columns:
+            if "fecha" in str(col).lower():
+                col_fecha = col
+                break
+        
+        if not col_fecha and "col_1" in df_hitos.columns:
+            col_fecha = "col_1"
+
+        if col_fecha:
+            df_hitos["_fecha_dt"] = pd.to_datetime(df_hitos[col_fecha], errors='coerce')
+            # Ordena de la fecha más reciente a la más antigua
+            df_hitos = df_hitos.sort_values(by="_fecha_dt", ascending=False)
+
+        # ---------------------------------------------------------------------
+        # MOSTRAR BITÁCORAS
+        # ---------------------------------------------------------------------
         for idx, r in df_hitos.iterrows():
-            # Estrategia de recuperación resiliente (por clave o por índice de columna)
             id_val = str(r.get("id", r.get("col_0", datetime.now().strftime("%Y%m%d%H%M%S"))))
             fecha_val = str(r.get("fecha", r.get("col_1", "")))
             titulo_val = str(r.get("titulo", r.get("col_2", "")))
