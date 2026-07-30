@@ -3,6 +3,9 @@ import pandas as pd
 from datetime import datetime, date
 import json
 import urllib.parse
+import base64
+from PIL import Image
+import io
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -15,13 +18,10 @@ st.set_page_config(
     layout="wide"
 )
 
-# 🗓️ FECHA DE INICIO DE LA RELACIÓN
 FECHA_INICIO = date(2026, 4, 21)  
-
-# 🔑 ID DE TU GOOGLE SHEET NATIVO
 SPREADSHEET_ID = "1o6dSXS4nSyC3M-20RaOQzpRsxEyVySnuu5KdzIZLyAo"
 
-# Estilos CSS Románticos y Modernos
+# Estilos CSS Románticos
 st.markdown(
     """
     <style>
@@ -94,7 +94,7 @@ st.markdown(
         background-color: #ffffff;
         padding: 20px;
         border-radius: 12px;
-        margin-bottom: 20px;
+        margin-bottom: 15px;
         box-shadow: 0 4px 15px rgba(0,0,0,0.05);
     }
 
@@ -103,7 +103,7 @@ st.markdown(
         background-color: #ffffff;
         padding: 20px;
         border-radius: 12px;
-        margin-bottom: 20px;
+        margin-bottom: 15px;
         box-shadow: 0 4px 15px rgba(0,0,0,0.05);
     }
 
@@ -132,11 +132,6 @@ st.markdown(
         border: 1px solid #ffe4e6;
         margin-bottom: 15px;
         box-shadow: 0 4px 10px rgba(225, 29, 72, 0.05);
-        transition: transform 0.2s;
-    }
-    .mandamiento-card:hover {
-        transform: translateY(-2px);
-        border-color: #fecdd3;
     }
     </style>
     """,
@@ -176,8 +171,21 @@ def conectar_sheet():
     except Exception as e:
         return None, str(e)
 
+def procesar_imagen(uploaded_file):
+    """Comprime la imagen cargada y la convierte en Base64 para guardarla en Sheets."""
+    if uploaded_file is None:
+        return ""
+    try:
+        image = Image.open(uploaded_file)
+        image.thumbnail((800, 800))  # Redimensionar para optimizar peso
+        buffered = io.BytesIO()
+        image.save(buffered, format="JPEG", quality=75)
+        img_str = base64.b64encode(buffered.getvalue()).decode()
+        return f"data:image/jpeg;base64,{img_str}"
+    except Exception:
+        return ""
+
 def limpiar_key(texto):
-    """Limpia textos de los encabezados para búsquedas flexibles."""
     replacements = (("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u"))
     s = str(texto).lower().strip()
     for a, b in replacements:
@@ -211,12 +219,10 @@ def obtener_datos(pestana_nombre):
                     row_dict["_fila_num"] = idx + 2
                     rows_clean.append(row_dict)
                     
-                df = pd.DataFrame(rows_clean)
-                return df
-        except Exception as e:
-            st.error(f"Error al leer pestaña '{pestana_nombre}': {e}")
-            
-    # Mandamientos de respaldo por si falla la conexión
+                return pd.DataFrame(rows_clean)
+        except Exception:
+            pass
+
     if pestana_nombre == "Mandamientos":
         return pd.DataFrame([
             {"numero": "1", "titulo": "Comunicación sincera siempre", "descripcion": "Hablar de nuestras emociones con amor y transparencia."},
@@ -248,7 +254,9 @@ def actualizar_hito(fila_num, datos_actualizados):
     if sh:
         try:
             ws = sh.worksheet("Hitos")
-            rango = f"A{fila_num}:F{fila_num}"
+            num_cols = len(datos_actualizados)
+            col_letra = chr(64 + num_cols) if num_cols <= 26 else "K"
+            rango = f"A{fila_num}:{col_letra}{fila_num}"
             ws.update(rango, [[str(x) for x in datos_actualizados]], value_input_option="USER_ENTERED")
             return True, None
         except Exception as e:
@@ -322,7 +330,7 @@ menu = st.radio(
 st.markdown("---")
 
 # =============================================================================
-# SECCIÓN 1: LÍNEA DE TIEMPO DE HITOS
+# SECCIÓN 1: LÍNEA DE TIEMPO DE HITOS (CON FOTOS Y REACCIONES)
 # =============================================================================
 if menu == "📖 Nuestra Línea de Tiempo":
     
@@ -337,7 +345,10 @@ if menu == "📖 Nuestra Línea de Tiempo":
                 categoria = st.selectbox("Categoría", ["Viaje ✈️", "Anécdota 🤭", "Proyecto 🚀", "Regalo 🎁", "Cita a Distancia 💻", "Especial ❤️"])
 
             titulo = st.text_input("Título *", placeholder="Ej: Nuestra primera llamada infinita...")
-            descripcion = st.text_area("Descripción / Sentimientos *", placeholder="Escribe aquí los detalles que hicieron especial este momento...")
+            descripcion = st.text_area("Descripción / Sentimientos *", placeholder="Escribe aquí los detalles de este momento...")
+            
+            # Campo para subir foto opcional
+            foto_file = st.file_uploader("📸 Adjuntar Fotografía (Opcional)", type=["jpg", "png", "jpeg"])
 
             submitted = st.form_submit_button("💖 Guardar en Nuestro Corazón")
 
@@ -346,13 +357,18 @@ if menu == "📖 Nuestra Línea de Tiempo":
                     st.error("Por favor ingresa un título y una descripción.")
                 else:
                     creador_clean = "Maca" if "Maca" in creador else "Fede"
+                    foto_b64 = procesar_imagen(foto_file)
+                    
+                    # Estructura: ID, Fecha, Título, Categoría, Creador, Descripción, Foto, Reacción_Amor, Reacción_Risa, Reacción_Aplauso, Reacción_Fuego
                     nuevo_registro = [
                         datetime.now().strftime("%Y%m%d%H%M%S"),
                         str(fecha_hito),
                         titulo.strip(),
                         categoria,
                         creador_clean,
-                        descripcion.strip()
+                        descripcion.strip(),
+                        foto_b64,
+                        0, 0, 0, 0
                     ]
                     exito, msg_err = guardar_hito(nuevo_registro)
                     if exito:
@@ -366,9 +382,7 @@ if menu == "📖 Nuestra Línea de Tiempo":
     df_hitos = obtener_datos("Hitos")
 
     if not df_hitos.empty:
-        # ---------------------------------------------------------------------
-        # ORDENAMIENTO CRONOLÓGICO ASCENDENTE POR FECHA DEL SUCESO
-        # ---------------------------------------------------------------------
+        # Ordenamiento cronológico ascendente (por fecha del suceso)
         col_fecha = None
         for col in df_hitos.columns:
             if "fecha" in str(col).lower():
@@ -380,12 +394,8 @@ if menu == "📖 Nuestra Línea de Tiempo":
 
         if col_fecha:
             df_hitos["_fecha_dt"] = pd.to_datetime(df_hitos[col_fecha], errors='coerce')
-            # Ordena de la fecha más antigua a la más reciente (ascendente)
             df_hitos = df_hitos.sort_values(by="_fecha_dt", ascending=True)
 
-        # ---------------------------------------------------------------------
-        # MOSTRAR BITÁCORAS
-        # ---------------------------------------------------------------------
         for idx, r in df_hitos.iterrows():
             id_val = str(r.get("id", r.get("col_0", datetime.now().strftime("%Y%m%d%H%M%S"))))
             fecha_val = str(r.get("fecha", r.get("col_1", "")))
@@ -393,6 +403,17 @@ if menu == "📖 Nuestra Línea de Tiempo":
             cat_val = str(r.get("categoria", r.get("col_3", "")))
             creador_val = str(r.get("creador", r.get("col_4", ""))).strip().lower()
             desc_val = str(r.get("descripcion", r.get("col_5", "")))
+            foto_val = str(r.get("foto", r.get("col_6", "")))
+            
+            try: r_amor = int(r.get("col_7", 0))
+            except: r_amor = 0
+            try: r_risa = int(r.get("col_8", 0))
+            except: r_risa = 0
+            try: r_aplauso = int(r.get("col_9", 0))
+            except: r_aplauso = 0
+            try: r_fuego = int(r.get("col_10", 0))
+            except: r_fuego = 0
+
             fila_num = r.get("_fila_num")
 
             es_maca = "maca" in creador_val
@@ -416,14 +437,39 @@ if menu == "📖 Nuestra Línea de Tiempo":
                     """,
                     unsafe_allow_html=True
                 )
-            
+                
+                # Renderizar Fotografía si existe
+                if foto_val and foto_val.startswith("data:image"):
+                    st.image(foto_val, width=400)
+
+                # Barra de Reacciones interactiva
+                c_react1, c_react2, c_react3, c_react4, _ = st.columns([1, 1, 1, 1, 4])
+                with c_react1:
+                    if st.button(f"❤️ {r_amor}", key=f"react_a_{fila_num}_{idx}"):
+                        datos_act = [id_val, fecha_val, titulo_val, cat_val, creador_val.capitalize(), desc_val, foto_val, r_amor + 1, r_risa, r_aplauso, r_fuego]
+                        actualizar_hito(fila_num, datos_act)
+                        st.rerun()
+                with c_react2:
+                    if st.button(f"😂 {r_risa}", key=f"react_r_{fila_num}_{idx}"):
+                        datos_act = [id_val, fecha_val, titulo_val, cat_val, creador_val.capitalize(), desc_val, foto_val, r_amor, r_risa + 1, r_aplauso, r_fuego]
+                        actualizar_hito(fila_num, datos_act)
+                        st.rerun()
+                with c_react3:
+                    if st.button(f"👏 {r_aplauso}", key=f"react_ap_{fila_num}_{idx}"):
+                        datos_act = [id_val, fecha_val, titulo_val, cat_val, creador_val.capitalize(), desc_val, foto_val, r_amor, r_risa, r_aplauso + 1, r_fuego]
+                        actualizar_hito(fila_num, datos_act)
+                        st.rerun()
+                with c_react4:
+                    if st.button(f"🔥 {r_fuego}", key=f"react_f_{fila_num}_{idx}"):
+                        datos_act = [id_val, fecha_val, titulo_val, cat_val, creador_val.capitalize(), desc_val, foto_val, r_amor, r_risa, r_aplauso, r_fuego + 1]
+                        actualizar_hito(fila_num, datos_act)
+                        st.rerun()
+
             with col_action:
                 c_edit, c_del = st.columns(2)
-                
                 with c_edit:
                     if st.button("✏️", key=f"btn_edit_{fila_num}_{idx}", help="Editar hito"):
                         st.session_state[f"edit_mode_{fila_num}"] = not st.session_state.get(f"edit_mode_{fila_num}", False)
-
                 with c_del:
                     if st.button("❌", key=f"btn_del_{fila_num}_{idx}", help="Eliminar hito"):
                         ok_del, err_del = eliminar_hito(fila_num)
@@ -433,7 +479,6 @@ if menu == "📖 Nuestra Línea de Tiempo":
                         else:
                             st.error(f"Error borrando: {err_del}")
 
-            # Modal interactivo para edición
             if st.session_state.get(f"edit_mode_{fila_num}", False):
                 with st.container():
                     st.info(f"✏️ **Editando Recuerdo:** {titulo_val}")
@@ -442,10 +487,8 @@ if menu == "📖 Nuestra Línea de Tiempo":
                         with ce1:
                             creador_edit = st.radio("Creador", ["👩 Maca", "👨 Fede"], index=0 if es_maca else 1, key=f"c_ed_{fila_num}")
                         with ce2:
-                            try:
-                                default_dt = pd.to_datetime(fecha_val).date()
-                            except Exception:
-                                default_dt = hoy
+                            try: default_dt = pd.to_datetime(fecha_val).date()
+                            except: default_dt = hoy
                             fecha_edit = st.date_input("Fecha", value=default_dt, key=f"f_ed_{fila_num}")
                         with ce3:
                             cat_list = ["Viaje ✈️", "Anécdota 🤭", "Proyecto 🚀", "Regalo 🎁", "Cita a Distancia 💻", "Especial ❤️"]
@@ -454,18 +497,23 @@ if menu == "📖 Nuestra Línea de Tiempo":
 
                         titulo_edit = st.text_input("Título", value=titulo_val, key=f"t_ed_{fila_num}")
                         desc_edit = st.text_area("Descripción", value=desc_val, key=f"d_ed_{fila_num}")
+                        foto_edit_file = st.file_uploader("📸 Reemplazar Fotografía (Opcional)", type=["jpg", "png", "jpeg"], key=f"foto_ed_{fila_num}")
 
                         btn_guardar_edit = st.form_submit_button("💾 Guardar Cambios")
 
                         if btn_guardar_edit:
                             creador_clean_edit = "Maca" if "Maca" in creador_edit else "Fede"
+                            foto_nueva_b64 = procesar_imagen(foto_edit_file) if foto_edit_file else foto_val
+                            
                             datos_act = [
                                 id_val,
                                 str(fecha_edit),
                                 titulo_edit.strip(),
                                 cat_edit,
                                 creador_clean_edit,
-                                desc_edit.strip()
+                                desc_edit.strip(),
+                                foto_nueva_b64,
+                                r_amor, r_risa, r_aplauso, r_fuego
                             ]
                             ok_upd, err_upd = actualizar_hito(fila_num, datos_act)
                             if ok_upd:
@@ -478,7 +526,7 @@ if menu == "📖 Nuestra Línea de Tiempo":
         st.info("Aún no hay recuerdos registrados. ¡Abran el panel de arriba para registrar el primero!")
 
 # =============================================================================
-# SECCIÓN 2: LOS 10 MANDAMIENTOS DE M&F
+# SECCIÓN 2: LOS 10 MANDAMIENTOS
 # =============================================================================
 elif menu == "📜 Los 10 Mandamientos":
     st.subheader("📜 Nuestras Promesas")
@@ -491,7 +539,6 @@ elif menu == "📜 Los 10 Mandamientos":
         
         for idx, r in df_mandamientos.iterrows():
             target_col = col_m1 if idx % 2 == 0 else col_m2
-            
             num_val = r.get("numero", r.get("col_0", idx+1))
             titulo_val = r.get("titulo", r.get("col_1", ""))
             desc_val = r.get("descripcion", r.get("col_2", ""))
