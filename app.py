@@ -21,7 +21,6 @@ st.set_page_config(
 FECHA_INICIO = date(2026, 4, 21)  
 SPREADSHEET_ID = "1o6dSXS4nSyC3M-20RaOQzpRsxEyVySnuu5KdzIZLyAo"
 
-# Estilos CSS Románticos
 st.markdown(
     """
     <style>
@@ -172,16 +171,25 @@ def conectar_sheet():
         return None, str(e)
 
 def procesar_imagen(uploaded_file):
-    """Comprime la imagen cargada y la convierte en Base64 para guardarla en Sheets."""
+    """Comprime la imagen para no superar el límite de 50,000 caracteres por celda."""
     if uploaded_file is None:
         return ""
     try:
         image = Image.open(uploaded_file)
-        image.thumbnail((800, 800))  # Redimensionar para optimizar peso
+        image = image.convert("RGB")
+        image.thumbnail((500, 500))  # Tamaño apto para celdas de Sheets
         buffered = io.BytesIO()
-        image.save(buffered, format="JPEG", quality=75)
+        image.save(buffered, format="JPEG", quality=55, optimize=True)
         img_str = base64.b64encode(buffered.getvalue()).decode()
-        return f"data:image/jpeg;base64,{img_str}"
+        res = f"data:image/jpeg;base64,{img_str}"
+        if len(res) > 49000:
+            # Compresión secundaria en caso de ser requerida
+            buffered = io.BytesIO()
+            image.thumbnail((350, 350))
+            image.save(buffered, format="JPEG", quality=40, optimize=True)
+            img_str = base64.b64encode(buffered.getvalue()).decode()
+            res = f"data:image/jpeg;base64,{img_str}"
+        return res
     except Exception:
         return ""
 
@@ -347,7 +355,6 @@ if menu == "📖 Nuestra Línea de Tiempo":
             titulo = st.text_input("Título *", placeholder="Ej: Nuestra primera llamada infinita...")
             descripcion = st.text_area("Descripción / Sentimientos *", placeholder="Escribe aquí los detalles de este momento...")
             
-            # Campo para subir foto opcional
             foto_file = st.file_uploader("📸 Adjuntar Fotografía (Opcional)", type=["jpg", "png", "jpeg"])
 
             submitted = st.form_submit_button("💖 Guardar en Nuestro Corazón")
@@ -359,7 +366,6 @@ if menu == "📖 Nuestra Línea de Tiempo":
                     creador_clean = "Maca" if "Maca" in creador else "Fede"
                     foto_b64 = procesar_imagen(foto_file)
                     
-                    # Estructura: ID, Fecha, Título, Categoría, Creador, Descripción, Foto, Reacción_Amor, Reacción_Risa, Reacción_Aplauso, Reacción_Fuego
                     nuevo_registro = [
                         datetime.now().strftime("%Y%m%d%H%M%S"),
                         str(fecha_hito),
@@ -382,7 +388,6 @@ if menu == "📖 Nuestra Línea de Tiempo":
     df_hitos = obtener_datos("Hitos")
 
     if not df_hitos.empty:
-        # Ordenamiento cronológico ascendente (por fecha del suceso)
         col_fecha = None
         for col in df_hitos.columns:
             if "fecha" in str(col).lower():
@@ -438,11 +443,9 @@ if menu == "📖 Nuestra Línea de Tiempo":
                     unsafe_allow_html=True
                 )
                 
-                # Renderizar Fotografía si existe
                 if foto_val and foto_val.startswith("data:image"):
                     st.image(foto_val, width=400)
 
-                # Barra de Reacciones interactiva
                 c_react1, c_react2, c_react3, c_react4, _ = st.columns([1, 1, 1, 1, 4])
                 with c_react1:
                     if st.button(f"❤️ {r_amor}", key=f"react_a_{fila_num}_{idx}"):
