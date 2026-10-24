@@ -112,16 +112,177 @@ def obtener_datos(pestana_nombre):
         ws = sh.worksheet(pestana_nombre)
         vals = ws.get_all_values()
 
-        if len(vals) >= 1:
-            headers_raw = [str(h).strip() for h in vals[0]]
+        if len(vals) >= 2:
+            headers = [limpiar_key(h) for h in vals[0]]
             data = vals[1:]
 
-            rows_clean = []
-            for idx, r in enumerate(data):
-                if not any(str(c).strip() for c in r):
-                    continue
+            # Filtrar filas completamente vacías
+            data_filtrada = []
+            filas_num = []
+            for i, row in enumerate(data):
+                if any(str(c).strip() for c in row):
+                    # Normalizar tamaño de columnas
+                    if len(row) < len(headers):
+                        row = row + [""] * (len(headers) - len(row))
+                    else:
+                        row = row[:len(headers)]
+                    data_filtrada.append(row)
+                    filas_num.append(i + 2)
 
-                row_dict = {}
-                for c_idx, val in enumerate(r):
-                    row_dict[f"col_{c_idx}"] = val
-                    if c_idx < len
+            df = pd.DataFrame(data_filtrada, columns=headers)
+            df["_fila_num"] = filas_num
+            return df
+    except Exception as e:
+        st.warning(f"No se pudo leer la pestaña '{pestana_nombre}': {e}")
+
+    if pestana_nombre == "Mandamientos":
+        return pd.DataFrame([
+            {"numero": "1", "titulo": "Comunicación sincera siempre", "descripcion": "Hablar de nuestras emociones con amor y transparencia."},
+            {"numero": "2", "titulo": "Cuidar la distancia con detalles", "descripcion": "Recordarnos todos los días lo mucho que nos importamos."},
+            {"numero": "3", "titulo": "Apoyar los sueños del otro", "descripcion": "Ser el refugio y el impulso mutuo en cada proyecto."},
+            {"numero": "4", "titulo": "Celebrar cada 21", "descripcion": "Hacer de nuestro cumple mes un día especial sin importar la rutina."},
+            {"numero": "5", "titulo": "Confianza ciega", "descripcion": "Construir la base de la relación en la lealtad y el respeto."},
+            {"numero": "6", "titulo": "Tiempo de calidad a la distancia", "descripcion": "Compartir citas virtuales, películas o llamadas sin distracciones."},
+            {"numero": "7", "titulo": "Planificar nuestro reencuentro", "descripcion": "Mantener viva la ilusión de los viajes y abrazos futuros."},
+            {"numero": "8", "titulo": "Resolver los malentendidos con amor", "descripcion": "Nunca irnos a dormir enojados el uno con el otro."},
+            {"numero": "9", "titulo": "Espacio personal e individualidad", "descripcion": "Acompañarnos sin perder el crecimiento propio."},
+            {"numero": "10", "titulo": "Elegirnos todos los días", "descripcion": "Recordar por qué iniciamos esta historia aquel 21 de abril."}
+        ])
+    return pd.DataFrame()
+
+def guardar_hito(nuevo_hito):
+    sh, err = conectar_sheet()
+    if sh:
+        try:
+            ws = sh.worksheet("Hitos")
+            ws.append_row([str(x) for x in nuevo_hito], value_input_option="USER_ENTERED")
+            return True, None
+        except Exception as e:
+            return False, f"Error al escribir en Hitos: {e}"
+    return False, f"Sin conexión: {err}"
+
+def actualizar_hito(fila_num, datos_actualizados):
+    sh, err = conectar_sheet()
+    if sh:
+        try:
+            ws = sh.worksheet("Hitos")
+            num_cols = len(datos_actualizados)
+            col_letra = chr(64 + num_cols) if num_cols <= 26 else "K"
+            rango = f"A{fila_num}:{col_letra}{fila_num}"
+            ws.update(rango, [[str(x) for x in datos_actualizados]], value_input_option="USER_ENTERED")
+            return True, None
+        except Exception as e:
+            return False, str(e)
+    return False, err
+
+def eliminar_hito(fila_num):
+    sh, err = conectar_sheet()
+    if sh:
+        try:
+            ws = sh.worksheet("Hitos")
+            ws.delete_rows(int(fila_num))
+            return True, None
+        except Exception as e:
+            return False, str(e)
+    return False, err
+
+# -----------------------------------------------------------------------------
+# 4. ENCABEZADO Y CONTADOR
+# -----------------------------------------------------------------------------
+st.title("NOSOTROS, LO NUESTRO")
+st.caption("CHILE 🇨🇱 ✈️ 🇵🇾 PARAGUAY | Macarena & Federico")
+
+hoy = date.today()
+dias_juntos = (hoy - FECHA_INICIO).days
+meses_cumplidos = (hoy.year - FECHA_INICIO.year) * 12 + hoy.month - FECHA_INICIO.month
+
+dias_mostrar = max(0, dias_juntos)
+meses_mostrar = max(0, meses_cumplidos)
+
+col_m1, col_m2 = st.columns(2)
+with col_m1:
+    st.metric(label="Días Juntos", value=f"{dias_mostrar} días")
+with col_m2:
+    st.metric(label="Meses de Historia", value=f"{meses_mostrar} meses", delta="Desde el 21 de Abril de 2026")
+
+if hoy.day == 21:
+    st.balloons()
+    st.success(f"🎉 ¡FELIZ CUMPLE MES MI AMOR! Hoy celebramos {meses_mostrar} meses de elegirnos. ❤️")
+
+# -----------------------------------------------------------------------------
+# 5. MENÚ DE NAVEGACIÓN Y CERRAR SESIÓN
+# -----------------------------------------------------------------------------
+c_menu, c_logout = st.columns([0.85, 0.15])
+with c_menu:
+    menu = st.radio(
+        "Navegación:",
+        ["📖 Nuestra Línea de Tiempo", "📜 Los 10 Mandamientos", "📲 Celebrar en WhatsApp"],
+        horizontal=True
+    )
+with c_logout:
+    st.write("")
+    if st.button("🔒 Salir"):
+        st.session_state["autenticado"] = False
+        st.rerun()
+
+st.divider()
+
+# =============================================================================
+# SECCIÓN 1: LÍNEA DE TIEMPO DE HITOS
+# =============================================================================
+if menu == "📖 Nuestra Línea de Tiempo":
+
+    with st.expander("✨ Agregar un Nuevo Recuerdo", expanded=False):
+        with st.form("form_hito", clear_on_submit=True):
+            c1, c2, c3 = st.columns([1, 1, 1])
+            with c1:
+                creador = st.radio("¿Quién registra?", ["👩 Maca", "👨 Fede"], horizontal=True)
+            with c2:
+                fecha_hito = st.date_input("Fecha del Recuerdo", value=hoy)
+            with c3:
+                categoria = st.selectbox("Categoría", ["Viaje ✈️", "Anécdota 🤭", "Proyecto 🚀", "Regalo 🎁", "Cita a Distancia 💻", "Especial ❤️"])
+
+            titulo = st.text_input("Título *", placeholder="Ej: Nuestra primera videollamada...")
+            descripcion = st.text_area("Descripción / Sentimientos *", placeholder="Escribe aquí los detalles...")
+            foto_file = st.file_uploader("📸 Adjuntar Fotografía (Opcional)", type=["jpg", "png", "jpeg"])
+
+            submitted = st.form_submit_button("💖 Guardar Recuerdo")
+
+            if submitted:
+                if not titulo or not descripcion:
+                    st.error("Por favor ingresa un título y una descripción.")
+                else:
+                    creador_clean = "Maca" if "Maca" in creador else "Fede"
+                    foto_b64 = procesar_imagen(foto_file)
+
+                    nuevo_registro = [
+                        datetime.now().strftime("%Y%m%d%H%M%S"),
+                        str(fecha_hito),
+                        titulo.strip(),
+                        categoria,
+                        creador_clean,
+                        descripcion.strip(),
+                        foto_b64,
+                        0, 0, 0, 0
+                    ]
+                    exito, msg_err = guardar_hito(nuevo_registro)
+                    if exito:
+                        st.success("✨ ¡Recuerdo guardado con éxito!")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Error al guardar: {msg_err}")
+
+    st.subheader("⏳ Nuestra Historia")
+
+    df_hitos = obtener_datos("Hitos")
+
+    if not df_hitos.empty:
+        col_fecha = None
+        for col in df_hitos.columns:
+            if "fecha" in str(col).lower():
+                col_fecha = col
+                break
+
+        if col_fecha:
+            df_hitos["_fecha_dt"] = pd.to_datetime(df_hitos[col_fecha], errors='coerce')
+            df_hitos = df_hitos.sort_values(by="_fecha_dt", ascending=True)
