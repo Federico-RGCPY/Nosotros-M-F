@@ -107,6 +107,7 @@ def limpiar_key(texto):
     return s
 
 def obtener_datos(pestana_nombre):
+    """Carga todas las filas sin límite desde la pestaña seleccionada."""
     sh, err = conectar_sheet()
     if sh:
         try:
@@ -119,7 +120,8 @@ def obtener_datos(pestana_nombre):
 
                 rows_clean = []
                 for idx, r in enumerate(data):
-                    if not any(r):
+                    # Solo ignorar filas donde literalmente no haya texto en ninguna columna
+                    if not any(str(c).strip() for c in r):
                         continue
 
                     row_dict = {}
@@ -130,6 +132,7 @@ def obtener_datos(pestana_nombre):
                             row_dict[clean_k] = val
                             row_dict[headers_raw[c_idx]] = val
 
+                    # Guardar número de fila exacto en Sheets para editar/borrar
                     row_dict["_fila_num"] = idx + 2
                     rows_clean.append(row_dict)
 
@@ -230,7 +233,7 @@ with c_logout:
 st.divider()
 
 # =============================================================================
-# SECCIÓN 1: LÍNEA DE TIEMPO DE HITOS
+# SECCIÓN 1: LÍNEA DE TIEMPO DE HITOS (CARGA COMPLETA Y ORDENADA)
 # =============================================================================
 if menu == "📖 Nuestra Línea de Tiempo":
 
@@ -292,6 +295,25 @@ if menu == "📖 Nuestra Línea de Tiempo":
             df_hitos["_fecha_dt"] = pd.to_datetime(df_hitos[col_fecha], errors='coerce')
             df_hitos = df_hitos.sort_values(by="_fecha_dt", ascending=True)
 
+        total_recuerdos = len(df_hitos)
+
+        # Filtros de visualización para asegurar carga total sin trabar el navegador
+        c_orden, c_vista = st.columns([1, 1])
+        with c_orden:
+            orden = st.selectbox("Orden:", ["Más antiguos primero (Cronológico)", "Más recientes primero"])
+        with c_vista:
+            filtro_autor = st.selectbox("Filtrar por autor:", ["Todos", "👩 Solo Maca", "👨 Solo Fede"])
+
+        if orden == "Más recientes primero":
+            df_hitos = df_hitos.iloc[::-1]
+
+        if filtro_autor == "👩 Solo Maca":
+            df_hitos = df_hitos[df_hitos["col_4"].astype(str).str.lower().str.contains("maca")]
+        elif filtro_autor == "👨 Solo Fede":
+            df_hitos = df_hitos[df_hitos["col_4"].astype(str).str.lower().str.contains("fede")]
+
+        st.caption(f"Mostrando **{len(df_hitos)}** de **{total_recuerdos}** recuerdos registrados en total.")
+
         for idx, r in df_hitos.iterrows():
             id_val = str(r.get("id", r.get("col_0", datetime.now().strftime("%Y%m%d%H%M%S"))))
             fecha_val = str(r.get("fecha", r.get("col_1", "")))
@@ -336,87 +358,4 @@ if menu == "📖 Nuestra Línea de Tiempo":
                 if foto_val and foto_val.startswith("data:image"):
                     st.image(foto_val, width=400)
 
-                c_r1, c_r2, c_r3, c_r4, _ = st.columns([1, 1, 1, 1, 4])
-                with c_r1:
-                    if st.button(f"❤️ {r_amor}", key=f"react_a_{fila_num}_{idx}"):
-                        datos_act = [id_val, fecha_val, titulo_val, cat_val, creador_val.capitalize(), desc_val, foto_val, r_amor + 1, r_risa, r_aplauso, r_fuego]
-                        actualizar_hito(fila_num, datos_act)
-                        st.rerun()
-                with c_r2:
-                    if st.button(f"😂 {r_risa}", key=f"react_r_{fila_num}_{idx}"):
-                        datos_act = [id_val, fecha_val, titulo_val, cat_val, creador_val.capitalize(), desc_val, foto_val, r_amor, r_risa + 1, r_aplauso, r_fuego]
-                        actualizar_hito(fila_num, datos_act)
-                        st.rerun()
-                with c_r3:
-                    if st.button(f"👏 {r_aplauso}", key=f"react_ap_{fila_num}_{idx}"):
-                        datos_act = [id_val, fecha_val, titulo_val, cat_val, creador_val.capitalize(), desc_val, foto_val, r_amor, r_risa, r_aplauso + 1, r_fuego]
-                        actualizar_hito(fila_num, datos_act)
-                        st.rerun()
-                with c_r4:
-                    if st.button(f"🔥 {r_fuego}", key=f"react_f_{fila_num}_{idx}"):
-                        datos_act = [id_val, fecha_val, titulo_val, cat_val, creador_val.capitalize(), desc_val, foto_val, r_amor, r_risa, r_aplauso, r_fuego + 1]
-                        actualizar_hito(fila_num, datos_act)
-                        st.rerun()
-
-            if st.session_state.get(f"edit_mode_{fila_num}", False):
-                with st.container(border=True):
-                    st.info(f"✏️ Editando: {titulo_val}")
-                    with st.form(f"form_edit_{fila_num}"):
-                        ce1, ce2, ce3 = st.columns([1, 1, 1])
-                        with ce1:
-                            creador_edit = st.radio("Creador", ["👩 Maca", "👨 Fede"], index=0 if "maca" in creador_val else 1, key=f"c_ed_{fila_num}")
-                        with ce2:
-                            try: default_dt = pd.to_datetime(fecha_val).date()
-                            except Exception: default_dt = hoy
-                            fecha_edit = st.date_input("Fecha", value=default_dt, key=f"f_ed_{fila_num}")
-                        with ce3:
-                            cat_list = ["Viaje ✈️", "Anécdota 🤭", "Proyecto 🚀", "Regalo 🎁", "Cita a Distancia 💻", "Especial ❤️"]
-                            cat_index = cat_list.index(cat_val) if cat_val in cat_list else 0
-                            cat_edit = st.selectbox("Categoría", cat_list, index=cat_index, key=f"cat_ed_{fila_num}")
-
-                        titulo_edit = st.text_input("Título", value=titulo_val, key=f"t_ed_{fila_num}")
-                        desc_edit = st.text_area("Descripción", value=desc_val, key=f"d_ed_{fila_num}")
-                        foto_edit_file = st.file_uploader("📸 Reemplazar Foto", type=["jpg", "png", "jpeg"], key=f"foto_ed_{fila_num}")
-
-                        btn_guardar_edit = st.form_submit_button("💾 Guardar Cambios")
-
-                        if btn_guardar_edit:
-                            creador_clean_edit = "Maca" if "Maca" in creador_edit else "Fede"
-                            foto_nueva_b64 = procesar_imagen(foto_edit_file) if foto_edit_file else foto_val
-
-                            datos_act = [
-                                id_val,
-                                str(fecha_edit),
-                                titulo_edit.strip(),
-                                cat_edit,
-                                creador_clean_edit,
-                                desc_edit.strip(),
-                                foto_nueva_b64,
-                                r_amor, r_risa, r_aplauso, r_fuego
-                            ]
-                            ok_upd, err_upd = actualizar_hito(fila_num, datos_act)
-                            if ok_upd:
-                                st.success("✨ Actualizado.")
-                                st.session_state[f"edit_mode_{fila_num}"] = False
-                                st.rerun()
-                            else:
-                                st.error(f"Error: {err_upd}")
-    else:
-        st.info("Aún no hay recuerdos registrados. ¡Abre el panel superior para registrar el primero!")
-
-# =============================================================================
-# SECCIÓN 2: LOS 10 MANDAMIENTOS
-# =============================================================================
-elif menu == "📜 Los 10 Mandamientos":
-    st.subheader("📜 Nuestras Promesas")
-    st.caption("Reglas que guían y protegen nuestra historia.")
-
-    df_mandamientos = obtener_datos("Mandamientos")
-
-    if not df_mandamientos.empty:
-        col_m1, col_m2 = st.columns(2)
-
-        for idx, r in df_mandamientos.iterrows():
-            target_col = col_m1 if idx % 2 == 0 else col_m2
-            num_val = r.get("numero", r.get("col_0", idx + 1))
-            titulo_val = r.get("titulo", r.get("col_1", ""))
+                c_r1, c_r
