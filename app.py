@@ -124,16 +124,4 @@ def obtener_datos(pestana_nombre):
                 row_dict = {}
                 for c_idx, val in enumerate(r):
                     row_dict[f"col_{c_idx}"] = val
-                    if c_idx < len(headers_raw):
-                        clean_k = limpiar_key(headers_raw[c_idx])
-                        row_dict[clean_k] = val
-                        row_dict[headers_raw[c_idx]] = val
-
-                row_dict["_fila_num"] = idx + 2
-                rows_clean.append(row_dict)
-
-            return pd.DataFrame(rows_clean)
-    except Exception as e:
-        st.warning(f"No se pudo leer la pestaña '{pestana_nombre}': {e}")
-
-    if pestana_nombre == "Mand
+                    if c_idx < len
