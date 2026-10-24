@@ -1,13 +1,3 @@
-import streamlit as st
-import pandas as pd
-from datetime import datetime, date
-import json
-import urllib.parse
-import base64
-from PIL import Image
-import io
-import gspread
-from google.oauth2.service_account import Credentials
 
 # -----------------------------------------------------------------------------
 # 1. CONFIGURACIÓN DE PÁGINA Y ESTILOS
