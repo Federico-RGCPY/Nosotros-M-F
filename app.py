@@ -86,9 +86,4 @@ st.markdown(
         font-size: 3rem;
         font-weight: 800;
         font-family: 'Montserrat', sans-serif;
-        margin: 10px 0;
-    }
-
-    .card-maca {
-        border-left: 6px solid #ec4899;
-        background-color: #
+        margin: 10px 0
