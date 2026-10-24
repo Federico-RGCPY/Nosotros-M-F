@@ -9,9 +9,6 @@ import io
 import gspread
 from google.oauth2.service_account import Credentials
 
-# -----------------------------------------------------------------------------
-# 1. CONFIGURACIÓN Y CONSTANTES
-# -----------------------------------------------------------------------------
 st.set_page_config(
     page_title="Nosotros, Lo Nuestro — M&F",
     page_icon="❤️",
@@ -35,9 +32,6 @@ MANDAMIENTOS_DEFAULT = [
     {"numero": "10", "titulo": "Elegirnos todos los días", "descripcion": "Recordar por qué iniciamos esta historia aquel 21 de abril."}
 ]
 
-# -----------------------------------------------------------------------------
-# 2. ACCESO PROTEGIDO
-# -----------------------------------------------------------------------------
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
 
@@ -59,9 +53,6 @@ if not st.session_state["autenticado"]:
                     st.error("Contraseña incorrecta. Inténtalo de nuevo.")
     st.stop()
 
-# -----------------------------------------------------------------------------
-# 3. CONEXIÓN A GOOGLE SHEETS
-# -----------------------------------------------------------------------------
 scopes = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
@@ -186,9 +177,6 @@ def eliminar_hito(fila_num):
             return False, str(e)
     return False, err
 
-# -----------------------------------------------------------------------------
-# 4. ENCABEZADO Y CONTADOR
-# -----------------------------------------------------------------------------
 st.title("NOSOTROS, LO NUESTRO")
 st.caption("CHILE 🇨🇱 ✈️ 🇵🇾 PARAGUAY | Macarena & Federico")
 
@@ -206,7 +194,248 @@ if hoy.day == 21:
     st.balloons()
     st.success(f"🎉 ¡FELIZ CUMPLE MES MI AMOR! Hoy celebramos {max(0, meses_cumplidos)} meses de elegirnos. ❤️")
 
-# -----------------------------------------------------------------------------
-# 5. NAVEGACIÓN
-# -----------------------------------------------------------------------------
-c_menu, c_
+c_menu, c_logout = st.columns([0.85, 0.15])
+with c_menu:
+    menu = st.radio(
+        "Navegación:",
+        ["📖 Nuestra Línea de Tiempo", "📜 Los 10 Mandamientos", "📲 Celebrar en WhatsApp"],
+        horizontal=True
+    )
+with c_logout:
+    st.write("")
+    if st.button("🔒 Salir"):
+        st.session_state["autenticado"] = False
+        st.rerun()
+
+st.divider()
+
+if menu == "📖 Nuestra Línea de Tiempo":
+
+    with st.expander("✨ Agregar un Nuevo Recuerdo", expanded=False):
+        with st.form("form_hito", clear_on_submit=True):
+            c1, c2, c3 = st.columns([1, 1, 1])
+            with c1:
+                creador = st.radio("¿Quién registra?", ["👩 Maca", "👨 Fede"], horizontal=True)
+            with c2:
+                fecha_hito = st.date_input("Fecha del Recuerdo", value=hoy)
+            with c3:
+                categoria = st.selectbox("Categoría", ["Viaje ✈️", "Anécdota 🤭", "Proyecto 🚀", "Regalo 🎁", "Cita a Distancia 💻", "Especial ❤️"])
+
+            titulo = st.text_input("Título *", placeholder="Ej: Nuestra primera videollamada...")
+            descripcion = st.text_area("Descripción / Sentimientos *", placeholder="Escribe aquí los detalles...")
+            foto_file = st.file_uploader("📸 Adjuntar Fotografía (Opcional)", type=["jpg", "png", "jpeg"])
+
+            if st.form_submit_button("💖 Guardar Recuerdo"):
+                if not titulo or not descripcion:
+                    st.error("Por favor ingresa un título y una descripción.")
+                else:
+                    creador_clean = "Maca" if "Maca" in creador else "Fede"
+                    foto_b64 = procesar_imagen(foto_file)
+
+                    nuevo_registro = [
+                        datetime.now().strftime("%Y%m%d%H%M%S"),
+                        str(fecha_hito),
+                        titulo.strip(),
+                        categoria,
+                        creador_clean,
+                        descripcion.strip(),
+                        foto_b64,
+                        0, 0, 0, 0
+                    ]
+                    exito, msg_err = guardar_hito(nuevo_registro)
+                    if exito:
+                        st.success("✨ ¡Recuerdo guardado con éxito!")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Error al guardar: {msg_err}")
+
+    st.subheader("⏳ Nuestra Historia")
+
+    df_hitos = obtener_datos("Hitos")
+
+    if not df_hitos.empty:
+        col_fecha = None
+        for col in df_hitos.columns:
+            if "fecha" in str(col).lower():
+                col_fecha = col
+                break
+
+        if col_fecha:
+            df_hitos["_fecha_dt"] = pd.to_datetime(df_hitos[col_fecha], errors='coerce')
+            df_hitos = df_hitos.sort_values(by="_fecha_dt", ascending=True)
+
+        total_recuerdos = len(df_hitos)
+
+        c_orden, c_vista = st.columns([1, 1])
+        with c_orden:
+            orden = st.selectbox("Orden:", ["Más antiguos primero (Cronológico)", "Más recientes primero"])
+        with c_vista:
+            filtro_autor = st.selectbox("Filtrar por autor:", ["Todos", "👩 Solo Maca", "👨 Solo Fede"])
+
+        if orden == "Más recientes primero":
+            df_hitos = df_hitos.iloc[::-1]
+
+        col_creador = next((c for c in df_hitos.columns if "creador" in c), None)
+        if col_creador:
+            if filtro_autor == "👩 Solo Maca":
+                df_hitos = df_hitos[df_hitos[col_creador].astype(str).str.lower().str.contains("maca")]
+            elif filtro_autor == "👨 Solo Fede":
+                df_hitos = df_hitos[df_hitos[col_creador].astype(str).str.lower().str.contains("fede")]
+
+        st.caption(f"Mostrando **{len(df_hitos)}** de **{total_recuerdos}** recuerdos en total.")
+
+        for idx, r in df_hitos.iterrows():
+            id_val = str(r.get("id", datetime.now().strftime("%Y%m%d%H%M%S")))
+            fecha_val = str(r.get("fecha", ""))
+            titulo_val = str(r.get("titulo", ""))
+            cat_val = str(r.get("categoria", ""))
+            creador_val = str(r.get("creador", "")).strip().lower()
+            desc_val = str(r.get("descripcion", ""))
+            foto_val = str(r.get("foto", ""))
+
+            cols_r = [c for c in df_hitos.columns if "reaccion" in c]
+            try:
+                r_amor = int(r[cols_r[0]]) if len(cols_r) > 0 else 0
+            except Exception:
+                r_amor = 0
+            try:
+                r_risa = int(r[cols_r[1]]) if len(cols_r) > 1 else 0
+            except Exception:
+                r_risa = 0
+            try:
+                r_aplauso = int(r[cols_r[2]]) if len(cols_r) > 2 else 0
+            except Exception:
+                r_aplauso = 0
+            try:
+                r_fuego = int(r[cols_r[3]]) if len(cols_r) > 3 else 0
+            except Exception:
+                r_fuego = 0
+
+            fila_num = r.get("_fila_num")
+            avatar = "👩 Maca" if "maca" in creador_val else "👨 Fede"
+
+            with st.container(border=True):
+                c_top1, c_top2 = st.columns([0.85, 0.15])
+                with c_top1:
+                    st.markdown(f"**{avatar}** &nbsp;|&nbsp; 📅 {fecha_val} &nbsp;|&nbsp; 🏷️ {cat_val}")
+                    st.subheader(titulo_val)
+                    st.write(desc_val)
+                with c_top2:
+                    c_ed, c_dl = st.columns(2)
+                    with c_ed:
+                        if st.button("✏️", key=f"btn_edit_{fila_num}_{idx}", help="Editar"):
+                            st.session_state[f"edit_mode_{fila_num}"] = not st.session_state.get(f"edit_mode_{fila_num}", False)
+                    with c_dl:
+                        if st.button("❌", key=f"btn_del_{fila_num}_{idx}", help="Eliminar"):
+                            ok_del, err_del = eliminar_hito(fila_num)
+                            if ok_del:
+                                st.success("Eliminado.")
+                                st.rerun()
+                            else:
+                                st.error(f"Error: {err_del}")
+
+                if foto_val and foto_val.startswith("data:image"):
+                    st.image(foto_val, width=400)
+
+                c_r1, c_r2, c_r3, c_r4, _ = st.columns([1, 1, 1, 1, 4])
+                with c_r1:
+                    if st.button(f"❤️ {r_amor}", key=f"react_a_{fila_num}_{idx}"):
+                        datos_act = [id_val, fecha_val, titulo_val, cat_val, creador_val.capitalize(), desc_val, foto_val, r_amor + 1, r_risa, r_aplauso, r_fuego]
+                        actualizar_hito(fila_num, datos_act)
+                        st.rerun()
+                with c_r2:
+                    if st.button(f"😂 {r_risa}", key=f"react_r_{fila_num}_{idx}"):
+                        datos_act = [id_val, fecha_val, titulo_val, cat_val, creador_val.capitalize(), desc_val, foto_val, r_amor, r_risa + 1, r_aplauso, r_fuego]
+                        actualizar_hito(fila_num, datos_act)
+                        st.rerun()
+                with c_r3:
+                    if st.button(f"👏 {r_aplauso}", key=f"react_ap_{fila_num}_{idx}"):
+                        datos_act = [id_val, fecha_val, titulo_val, cat_val, creador_val.capitalize(), desc_val, foto_val, r_amor, r_risa, r_aplauso + 1, r_fuego]
+                        actualizar_hito(fila_num, datos_act)
+                        st.rerun()
+                with c_r4:
+                    if st.button(f"🔥 {r_fuego}", key=f"react_f_{fila_num}_{idx}"):
+                        datos_act = [id_val, fecha_val, titulo_val, cat_val, creador_val.capitalize(), desc_val, foto_val, r_amor, r_risa, r_aplauso, r_fuego + 1]
+                        actualizar_hito(fila_num, datos_act)
+                        st.rerun()
+
+            if st.session_state.get(f"edit_mode_{fila_num}", False):
+                with st.container(border=True):
+                    st.info(f"✏️ Editando: {titulo_val}")
+                    with st.form(f"form_edit_{fila_num}"):
+                        ce1, ce2, ce3 = st.columns([1, 1, 1])
+                        with ce1:
+                            creador_edit = st.radio("Creador", ["👩 Maca", "👨 Fede"], index=0 if "maca" in creador_val else 1, key=f"c_ed_{fila_num}")
+                        with ce2:
+                            try:
+                                default_dt = pd.to_datetime(fecha_val).date()
+                            except Exception:
+                                default_dt = hoy
+                            fecha_edit = st.date_input("Fecha", value=default_dt, key=f"f_ed_{fila_num}")
+                        with ce3:
+                            cat_list = ["Viaje ✈️", "Anécdota 🤭", "Proyecto 🚀", "Regalo 🎁", "Cita a Distancia 💻", "Especial ❤️"]
+                            cat_index = cat_list.index(cat_val) if cat_val in cat_list else 0
+                            cat_edit = st.selectbox("Categoría", cat_list, index=cat_index, key=f"cat_ed_{fila_num}")
+
+                        titulo_edit = st.text_input("Título", value=titulo_val, key=f"t_ed_{fila_num}")
+                        desc_edit = st.text_area("Descripción", value=desc_val, key=f"d_ed_{fila_num}")
+                        foto_edit_file = st.file_uploader("📸 Reemplazar Foto", type=["jpg", "png", "jpeg"], key=f"foto_ed_{fila_num}")
+
+                        if st.form_submit_button("💾 Guardar Cambios"):
+                            creador_clean_edit = "Maca" if "Maca" in creador_edit else "Fede"
+                            foto_nueva_b64 = procesar_imagen(foto_edit_file) if foto_edit_file else foto_val
+
+                            datos_act = [
+                                id_val,
+                                str(fecha_edit),
+                                titulo_edit.strip(),
+                                cat_edit,
+                                creador_clean_edit,
+                                desc_edit.strip(),
+                                foto_nueva_b64,
+                                r_amor, r_risa, r_aplauso, r_fuego
+                            ]
+                            ok_upd, err_upd = actualizar_hito(fila_num, datos_act)
+                            if ok_upd:
+                                st.success("✨ Actualizado.")
+                                st.session_state[f"edit_mode_{fila_num}"] = False
+                                st.rerun()
+                            else:
+                                st.error(f"Error: {err_upd}")
+    else:
+        st.info("Aún no hay recuerdos registrados. ¡Abre el panel superior para registrar el primero!")
+
+elif menu == "📜 Los 10 Mandamientos":
+    st.subheader("📜 Nuestras Promesas")
+    st.caption("Reglas que guían y protegen nuestra historia.")
+
+    df_mandamientos = obtener_datos("Mandamientos")
+
+    if not df_mandamientos.empty:
+        col_m1, col_m2 = st.columns(2)
+
+        for idx, r in df_mandamientos.iterrows():
+            target_col = col_m1 if idx % 2 == 0 else col_m2
+            num_val = r.get("numero", idx + 1)
+            titulo_val = r.get("titulo", "")
+            desc_val = r.get("descripcion", "")
+
+            with target_col:
+                with st.container(border=True):
+                    st.markdown(f"**Mandamiento #{num_val}**")
+                    st.subheader(titulo_val)
+                    st.write(desc_val)
+
+elif menu == "📲 Celebrar en WhatsApp":
+    st.subheader("💬 Enviar Mensaje")
+
+    destinatario = st.radio("¿A quién le vas a enviar el mensaje?", ["A Macarena 👩🇨🇱", "A Federico 👨🇵🇾"], horizontal=True)
+
+    msj_default = f"¡Feliz Cumple Mes #{max(0, meses_cumplidos)} mi amor! ❤️\n\nHoy celebramos {max(0, dias_juntos)} días construyendo nuestra historia. Gracias por elegirme todos los días a pesar de la distancia.\n\nTe amo muchísimo, de Chile a Paraguay y de regreso. ✈️💖"
+
+    mensaje_personalizado = st.text_area("Edita tu mensaje aquí:", value=msj_default, height=150)
+
+    msj_encoded = urllib.parse.quote(mensaje_personalizado)
+    url_wa = f"https://api.whatsapp.com/send?text={msj_encoded}"
+
+    st.link_button("🟢 Abrir en WhatsApp y Enviar", url_wa, use_container_width=True)
