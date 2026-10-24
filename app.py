@@ -156,9 +156,3 @@ def guardar_hito(nuevo_hito):
             ws.append_row([str(x) for x in nuevo_hito], value_input_option="USER_ENTERED")
             return True, None
         except Exception as e:
-            return False, f"Error al escribir en Hitos: {e}"
-    return False, f"Sin conexión: {err}"
-
-def actualizar_hito(fila_num, datos_actualizados):
-    sh, err = conectar_sheet()
-    if sh:
