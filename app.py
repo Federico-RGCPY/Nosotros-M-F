@@ -9,30 +9,22 @@ import io
 import gspread
 from google.oauth2.service_account import Credentials
 
-st.set_page_config(
-    page_title="Nosotros, Lo Nuestro — M&F",
-    page_icon="❤️",
-    layout="wide"
-)
+st.set_page_config(page_title="Nosotros, Lo Nuestro — M&F", page_icon="❤️", layout="wide")
 
-# -------------------------------------------------------------
-# 1. CONTROL DE ACCESO
-# -------------------------------------------------------------
 PASSWORD_CORRECTA = "Mafe2026"
+FECHA_INICIO = date(2026, 4, 21)
+SPREADSHEET_ID = "1o6dSXS4nSyC3M-20RaOQzpRsxEyVySnuu5KdzIZLyAo"
 
+# 1. AUTENTICACIÓN
 if "autenticado" not in st.session_state:
     st.session_state["autenticado"] = False
 
 if not st.session_state["autenticado"]:
-    st.title("🔒 Acceso Privado")
-    c1, c2, c3 = st.columns([1, 1.2, 1])
-    with c2:
+    st.title("🔒 Acceso Privado — M&F")
+    col1, col2, col3 = st.columns([1, 1.2, 1])
+    with col2:
         with st.form("form_login"):
-            clave = st.text_input(
-                "Contraseña:",
-                type="password",
-                placeholder="Ingresa la clave..."
-            )
+            clave = st.text_input("Contraseña:", type="password")
             if st.form_submit_button("💖 Entrar", use_container_width=True):
                 if clave.strip() == PASSWORD_CORRECTA:
                     st.session_state["autenticado"] = True
@@ -41,64 +33,101 @@ if not st.session_state["autenticado"]:
                     st.error("Contraseña incorrecta.")
     st.stop()
 
-# -------------------------------------------------------------
-# 2. CONFIGURACIÓN Y ESTILOS (LÍNEAS CORTAS SIN CORTE)
-# -------------------------------------------------------------
-FECHA_INICIO = date(2026, 4, 21)
-SPREADSHEET_ID = "1o6dSXS4nSyC3M-20RaOQzpRsxEyVySnuu5KdzIZLyAo"
+# 2. CONEXIÓN A GOOGLE SHEETS
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 
-css_parts = [
-    "<style>",
-    "@import url('https://fonts.googleapis.com/css2?"
-    "family=Montserrat:wght@400;600;800&"
-    "family=Playfair+Display:ital,wght@0,700;1,400"
-    "&display=swap');",
-    ".stApp {",
-    "  background: linear-gradient(",
-    "    135deg, #fff5f7 0%, #ffe6eb 50%, #f3e8ff 100%",
-    "  );",
-    "}",
-    ".title-header {",
-    "  font-family: 'Playfair Display', serif;",
-    "  font-size: 3.5rem;",
-    "  font-weight: 700;",
-    "  text-align: center;",
-    "  background: linear-gradient(45deg, #e11d48, #9333ea);",
-    "  -webkit-background-clip: text;",
-    "  -webkit-text-fill-color: transparent;",
-    "  margin-bottom: 0;",
-    "  padding-top: 1rem;",
-    "}",
-    ".sub-header {",
-    "  font-family: 'Montserrat', sans-serif;",
-    "  text-align: center;",
-    "  font-size: 1.2rem;",
-    "  color: #be123c;",
-    "  font-weight: 600;",
-    "  letter-spacing: 3px;",
-    "  margin-bottom: 2rem;",
-    "}",
-    ".initials-card {",
-    "  background: rgba(255, 255, 255, 0.6);",
-    "  backdrop-filter: blur(10px);",
-    "  border-radius: 20px;",
-    "  border: 2px solid #fecdd3;",
-    "  padding: 30px;",
-    "  text-align: center;",
-    "  margin-bottom: 2rem;",
-    "}",
-    ".initials-text {",
-    "  font-family: 'Playfair Display', serif;",
-    "  font-size: 5rem;",
-    "  font-weight: 700;",
-    "  color: #e11d48;",
-    "  letter-spacing: 5px;",
-    "}",
-    ".counter-box {",
-    "  background: linear-gradient(135deg, #e11d48, #be123c);",
-    "  color: white;",
-    "  padding: 20px;",
-    "  border-radius: 20px;",
-    "  text-align: center;",
-    "}",
-    ".counter-number {",
+def conectar_sheet():
+    creds_dict = None
+    if "gcp_service_account" in st.secrets:
+        creds_dict = dict(st.secrets["gcp_service_account"])
+    elif "gcp_json" in st.secrets:
+        try:
+            creds_dict = json.loads(str(st.secrets["gcp_json"]).strip().strip("'\""), strict=False)
+        except Exception as e:
+            return None, f"Error en gcp_json: {e}"
+
+    if not creds_dict:
+        return None, "Falta la configuración de credenciales en Secrets."
+
+    try:
+        pk = str(creds_dict.get("private_key", ""))
+        if "\\n" in pk:
+            creds_dict["private_key"] = pk.replace("\\n", "\n")
+        creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+        gc = gspread.authorize(creds)
+        return gc.open_by_key(SPREADSHEET_ID), None
+    except Exception as e:
+        return None, str(e)
+
+def procesar_imagen(uploaded_file):
+    if not uploaded_file:
+        return ""
+    try:
+        img = Image.open(uploaded_file)
+        img.thumbnail((800, 800))
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=75)
+        return f"data:image/jpeg;base64,{base64.b64encode(buf.getvalue()).decode()}"
+    except Exception:
+        return ""
+
+def limpiar_key(txt):
+    s = str(txt).lower().strip()
+    for a, b in (("á", "a"), ("é", "e"), ("í", "i"), ("ó", "o"), ("ú", "u")):
+        s = s.replace(a, b)
+    return s
+
+def obtener_datos(pestana):
+    sh, err = conectar_sheet()
+    if sh:
+        try:
+            ws = sh.worksheet(pestana)
+            vals = ws.get_all_values()
+            if len(vals) >= 1:
+                hdrs = [str(h).strip() for h in vals[0]]
+                filas = []
+                for idx, r in enumerate(vals[1:]):
+                    if not any(str(c).strip() for c in r):
+                        continue
+                    d = {"_fila_num": idx + 2}
+                    for c_idx, val in enumerate(r):
+                        d[f"col_{c_idx}"] = val
+                        if c_idx < len(hdrs):
+                            d[limpiar_key(hdrs[c_idx])] = val
+                            d[hdrs[c_idx]] = val
+                    filas.append(d)
+                return pd.DataFrame(filas)
+        except Exception:
+            pass
+
+    if pestana == "Mandamientos":
+        return pd.DataFrame([
+            {"numero": "1", "titulo": "Comunicación sincera siempre", "descripcion": "Hablar de nuestras emociones con amor y transparencia."},
+            {"numero": "2", "titulo": "Cuidar la distancia con detalles", "descripcion": "Recordarnos todos los días lo mucho que nos importamos."},
+            {"numero": "3", "titulo": "Apoyar los sueños del otro", "descripcion": "Ser el refugio y el impulso mutuo en cada proyecto."},
+            {"numero": "4", "titulo": "Celebrar cada 21", "descripcion": "Hacer de nuestro cumple mes un día especial sin importar la rutina."},
+            {"numero": "5", "titulo": "Confianza ciega", "descripcion": "Construir la base de la relación en la lealtad y el respeto."},
+            {"numero": "6", "titulo": "Tiempo de calidad a la distancia", "descripcion": "Compartir citas virtuales, películas o llamadas sin distracciones."},
+            {"numero": "7", "titulo": "Planificar nuestro reencuentro", "descripcion": "Mantener viva la ilusión de los viajes y abrazos futuros."},
+            {"numero": "8", "titulo": "Resolver los malentendidos con amor", "descripcion": "Nunca irnos a dormir enojados el uno con el otro."},
+            {"numero": "9", "titulo": "Espacio personal e individualidad", "descripcion": "Acompañarnos sin perder el crecimiento propio."},
+            {"numero": "10", "titulo": "Elegirnos todos los días", "descripcion": "Recordar por qué iniciamos esta historia aquel 21 de abril."}
+        ])
+    return pd.DataFrame()
+
+def guardar_hito(fila):
+    sh, err = conectar_sheet()
+    if sh:
+        try:
+            sh.worksheet("Hitos").append_row([str(x) for x in fila], value_input_option="USER_ENTERED")
+            return True, None
+        except Exception as e:
+            return False, str(e)
+    return False, err
+
+def actualizar_hito(num, fila):
+    sh, err = conectar_sheet()
+    if sh:
+        try:
+            col = chr(64 + len(fila)) if len(fila) <= 26 else "K"
+            sh.works
