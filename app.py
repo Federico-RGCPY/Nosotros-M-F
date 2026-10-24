@@ -133,26 +133,4 @@ def obtener_datos(pestana_nombre):
     except Exception as e:
         st.warning(f"No se pudo leer la pestaña '{pestana_nombre}': {e}")
 
-    if pestana_nombre == "Mandamientos":
-        return pd.DataFrame([
-            {"numero": "1", "titulo": "Comunicación sincera siempre", "descripcion": "Hablar de nuestras emociones con amor y transparencia."},
-            {"numero": "2", "titulo": "Cuidar la distancia con detalles", "descripcion": "Recordarnos todos los días lo mucho que nos importamos."},
-            {"numero": "3", "titulo": "Apoyar los sueños del otro", "descripcion": "Ser el refugio y el impulso mutuo en cada proyecto."},
-            {"numero": "4", "titulo": "Celebrar cada 21", "descripcion": "Hacer de nuestro cumple mes un día especial sin importar la rutina."},
-            {"numero": "5", "titulo": "Confianza ciega", "descripcion": "Construir la base de la relación en la lealtad y el respeto."},
-            {"numero": "6", "titulo": "Tiempo de calidad a la distancia", "descripcion": "Compartir citas virtuales, películas o llamadas sin distracciones."},
-            {"numero": "7", "titulo": "Planificar nuestro reencuentro", "descripcion": "Mantener viva la ilusión de los viajes y abrazos futuros."},
-            {"numero": "8", "titulo": "Resolver los malentendidos con amor", "descripcion": "Nunca irnos a dormir enojados el uno con el otro."},
-            {"numero": "9", "titulo": "Espacio personal e individualidad", "descripcion": "Acompañarnos sin perder el crecimiento propio."},
-            {"numero": "10", "titulo": "Elegirnos todos los días", "descripcion": "Recordar por qué iniciamos esta historia aquel 21 de abril."}
-        ])
-    return pd.DataFrame()
-
-def guardar_hito(nuevo_hito):
-    sh, err = conectar_sheet()
-    if sh:
-        try:
-            ws = sh.worksheet("Hitos")
-            ws.append_row([str(x) for x in nuevo_hito], value_input_option="USER_ENTERED")
-            return True, None
-        except Exception as e:
+    if pest
